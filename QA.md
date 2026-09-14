@@ -12,7 +12,7 @@ Project-specific facts for `/qa`. Generic methodology lives in
 | Post-deploy autoqa | no sensor | nothing runs the crawler against the Pages site, so the link sweep is done in-pass (fetch the page, follow same-origin links, HEAD every external). The `fonts.googleapis.com` / `fonts.gstatic.com` bare hosts are `rel=preconnect` hints and 404 on a bare GET — always false positives, never file them |
 | CD / K8s / ArgoCD | no | ships to PyPI, npm, crates.io, Docker Hub via cd.yml/publish-extras.yml; those workflows' publish smokes are the probes |
 | Backend smoke | no | — |
-| SonarCloud | yes | project key is `nikolay-e_TreeMapper` (legacy name, never renamed) |
+| SonarQube | yes | self-hosted `sonar.nikolay-eremeev.com` (WARP-only), project key `diffctx`; `main` only, scanned by the gitops `sonar-scan` workflow on every Forgejo push |
 
 ## Stumble probe tasks
 
@@ -241,17 +241,18 @@ dismissing as bot noise.
    `code-scanning/alerts?state=open`, `secret-scanning/alerts?state=open`)
    — all three were empty on 2026-08-30; a pass reads them, it does not
    assume them.
-5. SonarCloud project `nikolay-e_TreeMapper` (the key predates the rename):
-   quality gate + open issues + hotspots via the sonarqube MCP tools, or —
-   the MCP server does not always connect — the REST API with the Keychain
-   `sonarcloud-token` as HTTP basic user: `api/qualitygates/project_status`,
-   `api/issues/search?projectKeys=…&statuses=OPEN,CONFIRMED`,
-   `api/hotspots/search?projectKey=…&status=TO_REVIEW`. Issues
-   raised on the day's own commits count as intake for that pass. The gate
-   can read OK while five issues are open — it scores NEW code against
-   ratings, so complexity and composite-assertion findings sit under a green
-   gate; read the issue list, never the gate alone. Analysis runs inside
-   `diffctx CI`, so a fix's issues stay OPEN until that run finishes.
+5. SonarQube project `diffctx` on `sonar.nikolay-eremeev.com` (WARP-only;
+   without a hosts entry use `curl --resolve
+   sonar.nikolay-eremeev.com:443:10.43.76.7`), Bearer token from Keychain
+   `sonarqube-token`: `api/qualitygates/project_status`,
+   `api/issues/search?componentKeys=…&resolved=false`,
+   `api/hotspots/search?projectKey=…&status=TO_REVIEW`. Issues raised on the
+   day's own commits count as intake for that pass. The gate scores NEW code
+   only, so older findings sit under a green gate; read the issue list, never
+   the gate alone. Analysis is not part of `diffctx CI` on the GitHub mirror:
+   a push to Forgejo `main` runs `sonar-diffctx-*` in `argo-workflows`, whose
+   verdict is the Forgejo commit status `argo-ci/sonar`. A fix's issues stay
+   open until that run finishes.
 6. The stumble ledger is a channel: `[stumble] <task>` issues carry the
    per-batch median and the deduped gripes. A convergent gripe (the same slug
    from independent runs) is the signal — on 2026-08-30 four of six slugs were
@@ -336,26 +337,28 @@ dismissing as bot noise.
   (`from diffctx._diffctx import X`) so the edge points at the submodule
   rather than the package root.
 - Sonar `python:S2245` on `paired_bootstrap` (seeded `random.Random` for
-  CI resampling) — false positive, marked via API 2026-08-04: determinism
-  is the requirement, not a security context.
+  CI resampling) — false positive: determinism is the requirement, not a
+  security context.
 - Sonar `pythonsecurity:S8705/S8707` on `eval/workflows/` harnesses
-  ("LLM sandbox escape") — accepted via API 2026-08-04: operator-run
-  local research harnesses; argv exec with regex-validated sha
-  (realworld_rerun) and operator-chosen output dir (run_final). Don't
-  re-litigate unless the eval workflows become agent-facing.
+  ("LLM sandbox escape") — accepted risk: operator-run local research
+  harnesses; argv exec with regex-validated sha (realworld_rerun) and
+  operator-chosen output dir (run_final). Don't re-litigate unless the eval
+  workflows become agent-facing.
 - Sonar `python:S2612` on `writer.py` `os.fchmod(fd, 0o666 & ~umask)` —
-  marked false positive via API 2026-09-03: the mode is what `open(..., "w")`
-  would have created; `mkstemp`'s 0600 is the anomaly being corrected. Python
-  NOSONAR takes no `(rule)` argument — `# NOSONAR(python:S2612)` is itself
-  flagged (S7632) and suppresses nothing.
-- SonarCloud `githubactions:S8543` on the publish-extras npm smoke:
-  `$VERSION` is an exact just-published version, package has zero
-  deps — marked false positive in SonarCloud via API (NOSONAR is NOT
-  supported by the githubactions analyzer; don't re-add it).
-  Gotcha: editing the flagged line (or its neighbours) shifts the issue
-  hash and Sonar re-raises the finding under a NEW issue key with the
-  FP mark lost — re-fetch after every analysis touching that file and
+  false positive: the mode is what `open(..., "w")` would have created;
+  `mkstemp`'s 0600 is the anomaly being corrected. Python NOSONAR takes no
+  `(rule)` argument — `# NOSONAR(python:S2612)` is itself flagged (S7632)
+  and suppresses nothing.
+- Sonar `githubactions:S8543` on the publish-extras npm smoke: `$VERSION`
+  is an exact just-published version, package has zero deps — false
+  positive (NOSONAR is NOT supported by the githubactions analyzer; don't
+  re-add it). Gotcha: editing the flagged line (or its neighbours) shifts
+  the issue hash and Sonar re-raises the finding under a NEW issue key with
+  the FP mark lost — re-fetch after every analysis touching that file and
   re-mark via `api/issues/do_transition` (`falsepositive`).
+- None of the resolutions above exist on the self-hosted server: they were
+  made on the retired hosted instance and did not migrate, so every one
+  re-raises until it is resolved again.
 
 ## Recurring bug patterns (diagnose once, recognise thereafter)
 
