@@ -1,6 +1,6 @@
 # diffctx
 
-<!-- Extends ../AGENTS.md -->
+<!-- Extends ~/.agents/AGENTS.md -->
 
 ## Ultimate Goal
 
