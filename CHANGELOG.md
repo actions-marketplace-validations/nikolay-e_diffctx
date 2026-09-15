@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A command-line reference page** (#240): `docs/product/cli.md` lists every
+  flag with its default and meaning, rendered from the parsers by
+  `scripts/update_cli_reference.py` and pinned by a test so it cannot drift
+  from `diffctx --help`. Linked from the site's nav, `llms.txt` and the
+  README.
 - **Every changed file gets a witness before any file gets a second one**
   (#263). Selection now opens with an evidence floor: one representation per
   changed file — the same fragment the relevance pass would place, its

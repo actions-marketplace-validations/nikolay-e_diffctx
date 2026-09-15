@@ -278,6 +278,8 @@ Apache 2.0
 
 - [Documentation site](https://nikolay-e.github.io/diffctx/) — the pipeline
   end to end: diff → fragments → graph → relevance → selection
+- [Command-line reference](docs/product/cli.md) — every flag with its default
+  and meaning, rendered from `diffctx --help`
 - [GitHub Action](docs/product/github-action.md) — diff context as a CI step
   for LLM review
 - [Token counting](docs/product/token-budget.md) — which encoder, and what
