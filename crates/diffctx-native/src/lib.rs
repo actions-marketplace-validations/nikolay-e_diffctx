@@ -21,6 +21,7 @@ pub(crate) mod testfiles;
 
 // Graph: relationships between fragments.
 pub(crate) mod edges;
+pub(crate) mod facts;
 pub(crate) mod graph;
 pub(crate) mod provenance;
 

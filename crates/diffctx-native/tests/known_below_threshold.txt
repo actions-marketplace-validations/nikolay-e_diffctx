@@ -88,5 +88,10 @@ synthetic/gaps/suite-2/gap2_173_perl_multi_file_easy_cgi_form
 config/yaml/yaml_003_logging_config
 config/yaml/yaml_012_queue_config
 infrastructure/kubernetes/kubernetes_001_selector_edge_pulls_workload
+# kubernetes_046 is kubernetes_001 across a `---` bundle (#258): one view per document now, the
+# selector edge lands on the web Deployment and not the api one (unit-tested against the real
+# fragmenter), and the same stopping-rule calibration keeps the 0.037-scoring target out at this
+# corpus's budget. Lifts together with kubernetes_001.
+infrastructure/kubernetes/kubernetes_046_multidoc_bundle_selector
 synthetic/balanced/suite-2/one-hop/bal2_1hop_064_csharp_dto_mapping_bugfix
 synthetic/balanced/suite-2/one-hop/bal2_1hop_067_csharp_entity_config_change

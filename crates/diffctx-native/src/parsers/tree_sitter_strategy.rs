@@ -682,6 +682,14 @@ fn get_tree_sitter_language(ts_name: &str) -> Option<Language> {
     LANGUAGE_CACHE.get(ts_name).cloned()
 }
 
+/// A parse of `content` under the named grammar, from the same thread-local
+/// parser cache and under the same wall-clock bound the fragmenter uses.
+/// `None` when the grammar is not compiled in or the parse timed out.
+pub(crate) fn parse_tree(ts_name: &'static str, content: &str) -> Option<Tree> {
+    let language = get_tree_sitter_language(ts_name)?;
+    parse_with_cached_parser(ts_name, &language, content)
+}
+
 thread_local! {
     static PARSER_CACHE: RefCell<FxHashMap<&'static str, Parser>> = RefCell::new(FxHashMap::default());
 }

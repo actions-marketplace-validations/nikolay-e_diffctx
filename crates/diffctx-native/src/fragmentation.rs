@@ -140,6 +140,15 @@ pub(crate) fn is_generated_file(path: &Path, content: &str) -> bool {
         || has_generated_content_marker(content)
 }
 
+/// A one- or two-line YAML pair that identifies a Kubernetes resource.
+fn is_resource_header(content: &str) -> bool {
+    let first = content.lines().next().unwrap_or("").trim_start();
+    content.lines().count() <= 2
+        && (first.starts_with("apiVersion:")
+            || first.starts_with("kind:")
+            || first.starts_with("metadata:"))
+}
+
 fn truncate_generated_fragments(file_frags: Vec<Fragment>) -> Vec<Fragment> {
     let max_lines = LIMITS.max_generated_lines as u32;
     file_frags
@@ -334,8 +343,20 @@ pub fn process_files_for_fragments(
                         max_frags
                     };
                     if raw_frags.len() > cap {
-                        raw_frags.sort_by(|a, b| b.line_count().cmp(&a.line_count()));
-                        raw_frags.truncate(cap);
+                        // Longest first — but a manifest's one-line
+                        // `apiVersion:`/`kind:` pairs are what says it is a
+                        // manifest at all, and dropping them as the shortest
+                        // made a generated Deployment invisible to the
+                        // selector channel (#258). Resource headers survive
+                        // the cut; the cap applies to everything else.
+                        let (headers, mut rest): (Vec<Fragment>, Vec<Fragment>) = raw_frags
+                            .into_iter()
+                            .partition(|f| generated && is_resource_header(&f.content));
+                        rest.sort_by(|a, b| b.line_count().cmp(&a.line_count()));
+                        rest.truncate(cap);
+                        rest.extend(headers);
+                        rest.sort_by(|a, b| a.id.cmp(&b.id));
+                        raw_frags = rest;
                     }
                     if generated {
                         raw_frags = truncate_generated_fragments(raw_frags);
@@ -450,5 +471,18 @@ mod tests {
         assert!(out[0].content.contains("more lines]"));
         assert_eq!(out[0].end_line(), max_lines as u32);
         assert!(!out[0].content.contains(&format!("line {}", max_lines + 1)));
+    }
+    /// #258: the generated-file cut keeps the longest fragments, and a
+    /// manifest's `apiVersion:`/`kind:` pairs are the shortest — without them
+    /// the file is no longer detected as a manifest at all.
+    #[test]
+    fn resource_headers_are_told_apart_from_body_fragments() {
+        assert!(is_resource_header("apiVersion: apps/v1\n"));
+        assert!(is_resource_header("kind: Deployment"));
+        assert!(is_resource_header("metadata:\n  name: web\n"));
+        assert!(!is_resource_header("spec:\n  replicas: 2\n"));
+        assert!(!is_resource_header(
+            "metadata:\n  name: web\n  labels:\n    app: web\n"
+        ));
     }
 }

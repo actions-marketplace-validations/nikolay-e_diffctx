@@ -139,7 +139,3 @@ oracle:
   allowed: []
   forbidden:
   - api_deployment_unrelated
-xfail:
-  category: known_bug
-  reason: "#258: a --- bundle is indexed as its first document; labels merge last-wins"
-  issue: 258

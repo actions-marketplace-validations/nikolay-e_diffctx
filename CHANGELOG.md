@@ -145,6 +145,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A `---` bundle is every resource it holds, not its first** (#258). The
+  Kubernetes edge builder now reads one view per YAML document, so a
+  Service in the third document is indexed as a Service, its selector meets
+  the Deployment in the second, and two Deployments' labels no longer
+  collapse into one last-wins map. A generated manifest keeps its
+  `apiVersion:`/`kind:`/`metadata:` pairs through the generated-file cut,
+  which used to drop them as the shortest fragments and with them the
+  detection that made the file a manifest at all.
+- **Scala imports, packages and inheritance come off the parse tree**
+  (#243). `tree-sitter-scala` already parsed every Scala file for
+  fragmentation; the edge layer re-read the text with a regex on its fifth
+  patch. `facts::scala` now walks `import_declaration` (braces, `=>` and
+  `as` renames, `_`/`*`/`given` wildcards, multi-line groups),
+  `package_clause` chains and `extends_clause` types; the regex reader
+  stays as the fallback for text that does not parse cleanly, and the two
+  are held to agree on every shape the tests name. An import inside a
+  block comment is no longer an import.
 - **The compose `context:` and CI→`package.json` channels revived on
   2026-09-02 were dead on arrival.** Both built their path reference from the
   fragment's absolute path, while the fragment index is keyed repo-relative,
