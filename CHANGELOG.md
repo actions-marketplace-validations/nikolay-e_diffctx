@@ -330,6 +330,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The Python identifier and import channels are bounded on their own**
+  (#196). A name used in more than 64 files without importing its definer
+  (`hass`, `config`, `entry` — a fixture, a parameter, a word) is
+  vocabulary and no longer fans out to its definitions; an import links the
+  importing fragment to the module's representative fragment and, for
+  `from m import x`, to the fragment that defines `x`, instead of to every
+  fragment of the module. Relative imports resolve to the sibling module
+  they name (`from .coordinator import C` confirms the `coordinator` edge; it
+  used to confirm only the package). Same home-assistant instance, same
+  machine: 38.1M → 2.8M python edges, 100 s → 22 s wall, 10.9 → 2.8 GB
+  peak RSS, and the artifact is complete again without touching the
+  contribution cap. Edge-weight profile `v2-2026-09-16`; corpus unchanged.
 - **One heavy phase for the product and the corpus harness.** From the
   fragments onward — token counts, cores and their stand-ins, signature
   variants, seed weights, scoring, information needs — both paths call

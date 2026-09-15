@@ -32,7 +32,7 @@ pub const SCORING_PROFILE_VERSION: &str = "v5-2026-08-19";
 
 /// Bumped whenever an entry of `config/weights.rs` or `config/edge_weights.rs`
 /// changes: the manual edge weights are frozen model parameters for v3.
-pub const EDGE_WEIGHT_PROFILE_VERSION: &str = "v1-2026-08-20";
+pub const EDGE_WEIGHT_PROFILE_VERSION: &str = "v2-2026-09-16";
 
 /// Bumped whenever fragmentation changes what a file is cut into (a grammar
 /// upgrade, a new `definition_types` entry, a chunking rule): a parse cache
