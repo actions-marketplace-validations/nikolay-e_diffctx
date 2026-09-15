@@ -56,13 +56,9 @@ pub struct RLangEdgeBuilder;
 
 impl EdgeBuilder for RLangEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_r_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_r_file(Path::new(f.path()))) else {
             return FxHashMap::default();
-        }
+        };
 
         let source_w = EDGE_WEIGHTS["r_source"].forward;
         let fn_w = EDGE_WEIGHTS["r_fn"].forward;

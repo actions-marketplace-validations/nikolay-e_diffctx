@@ -119,13 +119,10 @@ pub struct JavaScriptEdgeBuilder;
 
 impl EdgeBuilder for JavaScriptEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let js_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_js_file(Path::new(f.path())))
-            .collect();
-        if js_frags.is_empty() {
+        let Some(js_frags) = base::frags_where(fragments, |f| is_js_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let mut name_to_defs: FxHashMap<String, Vec<FragmentId>> = FxHashMap::default();
         let mut name_def_files: FxHashMap<String, FxHashSet<&str>> = FxHashMap::default();

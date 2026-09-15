@@ -105,13 +105,10 @@ pub struct CFamilyEdgeBuilder;
 
 impl EdgeBuilder for CFamilyEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let c_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_c_family(Path::new(f.path())))
-            .collect();
-        if c_frags.is_empty() {
+        let Some(c_frags) = base::frags_where(fragments, |f| is_c_family(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let include_weight = EDGE_WEIGHTS["c_include"].forward;
         let call_weight = EDGE_WEIGHTS["c_call"].forward;

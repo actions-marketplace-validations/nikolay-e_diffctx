@@ -94,13 +94,10 @@ pub struct DartEdgeBuilder;
 
 impl EdgeBuilder for DartEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let dart_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_dart_file(Path::new(f.path())))
-            .collect();
-        if dart_frags.is_empty() {
+        let Some(dart_frags) = base::frags_where(fragments, |f| is_dart_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let import_weight = EDGE_WEIGHTS["dart_import"].forward;
         let type_weight = EDGE_WEIGHTS["dart_type"].forward;

@@ -39,13 +39,10 @@ pub struct ShellEdgeBuilder;
 
 impl EdgeBuilder for ShellEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let sh_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_shell_file(Path::new(f.path())))
-            .collect();
-        if sh_frags.is_empty() {
+        let Some(sh_frags) = base::frags_where(fragments, |f| is_shell_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let source_weight = EDGE_WEIGHTS["shell_source"].forward;
         let script_weight = EDGE_WEIGHTS["shell_script"].forward;

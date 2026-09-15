@@ -110,13 +110,10 @@ pub struct AnsibleEdgeBuilder;
 
 impl EdgeBuilder for AnsibleEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_ansible_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_ansible_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let include_w = EDGE_WEIGHTS["ansible_include"].forward;
         let role_w = EDGE_WEIGHTS["ansible_role"].forward;

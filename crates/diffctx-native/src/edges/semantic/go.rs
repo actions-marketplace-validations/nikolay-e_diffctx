@@ -232,13 +232,10 @@ impl GoEdgeBuilder {
 
 impl EdgeBuilder for GoEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let go_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_go_file(Path::new(f.path())))
-            .collect();
-        if go_frags.is_empty() {
+        let Some(go_frags) = base::frags_where(fragments, |f| is_go_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let import_weight = EDGE_WEIGHTS["go_import"].forward;
         let type_weight = EDGE_WEIGHTS["go_type"].forward;

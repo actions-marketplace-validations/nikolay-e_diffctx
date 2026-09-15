@@ -199,13 +199,10 @@ pub struct DotNetEdgeBuilder;
 
 impl EdgeBuilder for DotNetEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let dn_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_dotnet_file(Path::new(f.path())))
-            .collect();
-        if dn_frags.is_empty() {
+        let Some(dn_frags) = base::frags_where(fragments, |f| is_dotnet_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let using_weight = EDGE_WEIGHTS["dotnet_using"].forward;
         let inheritance_weight = EDGE_WEIGHTS["dotnet_inheritance"].forward;

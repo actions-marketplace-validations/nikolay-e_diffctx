@@ -138,13 +138,10 @@ pub struct RustEdgeBuilder;
 
 impl EdgeBuilder for RustEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let rust_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_rust_file(Path::new(f.path())))
-            .collect();
-        if rust_frags.is_empty() {
+        let Some(rust_frags) = base::frags_where(fragments, |f| is_rust_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let mod_weight = EDGE_WEIGHTS["rust_mod"].forward;
         let use_weight = EDGE_WEIGHTS["rust_use"].forward;

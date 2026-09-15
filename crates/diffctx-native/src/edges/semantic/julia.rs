@@ -65,13 +65,10 @@ pub struct JuliaEdgeBuilder;
 
 impl EdgeBuilder for JuliaEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_julia_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_julia_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let using_w = EDGE_WEIGHTS["julia_using"].forward;
         let include_w = EDGE_WEIGHTS["julia_include"].forward;

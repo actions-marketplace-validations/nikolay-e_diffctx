@@ -67,13 +67,10 @@ pub struct GraphqlEdgeBuilder;
 
 impl EdgeBuilder for GraphqlEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_graphql_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_graphql_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let type_w = EDGE_WEIGHTS["graphql_type_ref"].forward;
         let extend_w = EDGE_WEIGHTS["graphql_extend"].forward;

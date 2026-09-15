@@ -58,13 +58,10 @@ pub struct RubyEdgeBuilder;
 
 impl EdgeBuilder for RubyEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_ruby_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_ruby_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let require_w = EDGE_WEIGHTS["ruby_require"].forward;
         let include_w = EDGE_WEIGHTS["ruby_include"].forward;

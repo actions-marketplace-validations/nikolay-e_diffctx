@@ -44,13 +44,11 @@ pub struct PrismaEdgeBuilder;
 
 impl EdgeBuilder for PrismaEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let schema_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_prisma_file(Path::new(f.path())))
-            .collect();
-        if schema_frags.is_empty() {
+        let Some(schema_frags) =
+            base::frags_where(fragments, |f| is_prisma_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let schema_w = EDGE_WEIGHTS["prisma_schema"].forward;
         let client_w = EDGE_WEIGHTS["prisma_client"].forward;

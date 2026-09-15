@@ -198,13 +198,10 @@ pub struct PythonEdgeBuilder;
 
 impl EdgeBuilder for PythonEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let py_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_python_file(Path::new(f.path())))
-            .collect();
-        if py_frags.is_empty() {
+        let Some(py_frags) = base::frags_where(fragments, |f| is_python_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let weights = LANG_WEIGHTS.get("python").expect("python weights");
         let call_weight = weights.call;

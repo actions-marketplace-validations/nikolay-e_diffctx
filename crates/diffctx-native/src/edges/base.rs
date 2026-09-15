@@ -195,6 +195,16 @@ pub fn file_representatives<'a>(
         .collect()
 }
 
+/// The fragments a builder recognises, or `None` when there are none —
+/// the prelude 37 builders open the same way with.
+pub fn frags_where<'a>(
+    fragments: &'a [Fragment],
+    keep: impl Fn(&&'a Fragment) -> bool,
+) -> Option<Vec<&'a Fragment>> {
+    let mine: Vec<&Fragment> = fragments.iter().filter(keep).collect();
+    (!mine.is_empty()).then_some(mine)
+}
+
 pub fn add_edge(
     edges: &mut EdgeDict,
     src: &FragmentId,

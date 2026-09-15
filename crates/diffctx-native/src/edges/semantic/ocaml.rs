@@ -51,13 +51,10 @@ pub struct OCamlEdgeBuilder;
 
 impl EdgeBuilder for OCamlEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_ocaml_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_ocaml_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let open_w = EDGE_WEIGHTS["ocaml_open"].forward;
         let _type_w = EDGE_WEIGHTS["ocaml_type"].forward;

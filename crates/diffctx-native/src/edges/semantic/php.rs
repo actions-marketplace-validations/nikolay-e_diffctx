@@ -73,13 +73,9 @@ pub struct PhpEdgeBuilder;
 
 impl EdgeBuilder for PhpEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_php_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_php_file(Path::new(f.path()))) else {
             return FxHashMap::default();
-        }
+        };
 
         let use_w = EDGE_WEIGHTS["php_use"].forward;
         let require_w = EDGE_WEIGHTS["php_require"].forward;

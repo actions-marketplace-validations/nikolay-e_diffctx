@@ -84,13 +84,10 @@ pub struct HaskellEdgeBuilder;
 
 impl EdgeBuilder for HaskellEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let hs_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_haskell_file(Path::new(f.path())))
-            .collect();
-        if hs_frags.is_empty() {
+        let Some(hs_frags) = base::frags_where(fragments, |f| is_haskell_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let import_weight = EDGE_WEIGHTS["haskell_import"].forward;
         let type_weight = EDGE_WEIGHTS["haskell_type"].forward;

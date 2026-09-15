@@ -73,13 +73,10 @@ pub struct ClojureEdgeBuilder;
 
 impl EdgeBuilder for ClojureEdgeBuilder {
     fn build(&self, fragments: &[Fragment], repo_root: Option<&Path>) -> EdgeDict {
-        let frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_clojure_file(Path::new(f.path())))
-            .collect();
-        if frags.is_empty() {
+        let Some(frags) = base::frags_where(fragments, |f| is_clojure_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let require_w = EDGE_WEIGHTS["clojure_require"].forward;
         let fn_w = EDGE_WEIGHTS["clojure_fn"].forward;

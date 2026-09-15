@@ -464,13 +464,10 @@ pub struct JVMEdgeBuilder;
 
 impl EdgeBuilder for JVMEdgeBuilder {
     fn build(&self, fragments: &[Fragment], _repo_root: Option<&Path>) -> EdgeDict {
-        let jvm_frags: Vec<&Fragment> = fragments
-            .iter()
-            .filter(|f| is_jvm_file(Path::new(f.path())))
-            .collect();
-        if jvm_frags.is_empty() {
+        let Some(jvm_frags) = base::frags_where(fragments, |f| is_jvm_file(Path::new(f.path())))
+        else {
             return FxHashMap::default();
-        }
+        };
 
         let import_weight = EDGE_WEIGHTS["jvm_import"].forward;
         let inheritance_weight = EDGE_WEIGHTS["jvm_inheritance"].forward;
