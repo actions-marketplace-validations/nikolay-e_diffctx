@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.16.0] - 2026-09-16
+
 ### Added
 
 - **A FAQ and a benchmarks page** (#151): `docs/product/faq.md` answers the
@@ -1549,7 +1551,8 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.15.0...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.16.0...HEAD
+[1.16.0]: https://github.com/nikolay-e/diffctx/compare/v1.15.0...v1.16.0
 [1.15.0]: https://github.com/nikolay-e/diffctx/compare/v1.14.0...v1.15.0
 [1.14.0]: https://github.com/nikolay-e/diffctx/compare/v1.13.0...v1.14.0
 [1.13.0]: https://github.com/nikolay-e/diffctx/compare/v1.12.3...v1.13.0
