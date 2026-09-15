@@ -71,6 +71,9 @@ pub struct ScoredState {
     pub preferred_revs: Vec<String>,
     pub commit_message: Option<String>,
     pub heavy_latency_ms: HeavyLatencyMs,
+    /// Everything a reader needs to reproduce this state: the resolved
+    /// configuration and its hash, the input revisions, the limits in force.
+    pub provenance: crate::run_provenance::RunProvenance,
     /// The change summary's token cost (#241), computed once here: it depends
     /// on nothing a sweep cell changes, and `select_with_params` re-runs
     /// selection per (tau, cbf) cell against this one state.
@@ -151,6 +154,9 @@ pub fn build_diff_context_locate(
             stopping_certificate: 0.0,
             select_ms: 0.0,
             stand_in_ids: FxHashSet::default(),
+            budget_requested: budget_tokens,
+            tau: tau.unwrap_or(crate::config::limits::DEFAULT_STOPPING_THRESHOLD),
+            gated: false,
         }
     } else {
         run_selection(&state, budget_tokens, tau)
@@ -478,6 +484,7 @@ pub fn compute_scored_state(
     timeout: u64,
 ) -> Result<ScoredState> {
     let t_entry = Instant::now();
+    crate::effective_config::enforce_strict_env()?;
     git::set_git_timeout(timeout);
     let deadline = crate::deadline::Deadline::from_timeout_secs(timeout);
     let root_dir = resolve_repo_root(root_dir)?;
@@ -505,7 +512,7 @@ pub fn compute_scored_state(
             ignored_changes,
             policy_excluded_count,
         } => {
-            let mut state = empty_scored_state_with_changes(root_dir, diff_range);
+            let mut state = empty_scored_state_with_changes(root_dir, diff_range, timeout);
             state.lockfile_changes = lockfile_changes;
             state.ignored_changes = ignored_changes;
             state.policy_excluded_count = policy_excluded_count;
@@ -556,6 +563,12 @@ pub fn compute_scored_state(
     if let Ok(s) = std::env::var("DIFFCTX_OBJECTIVE") {
         config.objective = crate::mode::ObjectiveMode::from_str(&s);
     }
+    let provenance = crate::run_provenance::RunProvenance::new(
+        &root_dir,
+        diff_range,
+        crate::effective_config::EffectiveConfigV1::resolve(&config),
+        timeout,
+    );
 
     let mut expansion_concepts: FxHashSet<String> =
         crate::types::extract_identifiers(&diff_text, TOKENIZATION.query_min_identifier_length)
@@ -699,6 +712,7 @@ pub fn compute_scored_state(
         preferred_revs,
         commit_message,
         heavy_latency_ms,
+        provenance,
         envelope_tokens: 0,
     };
     state.envelope_tokens = envelope_tokens_of(&state);
@@ -721,6 +735,33 @@ pub struct SelectionOutcome {
     /// See `SelectionResult::stand_in_ids` — carried to the renderers so both
     /// surfaces read one recorded fact instead of re-deriving it (#209).
     pub stand_in_ids: FxHashSet<FragmentId>,
+    /// What was actually asked for, so provenance says the requested cap and
+    /// the auto-sized one apart.
+    pub budget_requested: Option<u32>,
+    pub tau: f64,
+    pub gated: bool,
+}
+
+impl SelectionOutcome {
+    pub fn selection_provenance(&self) -> crate::run_provenance::Selection {
+        crate::run_provenance::Selection {
+            budget_tokens: self.effective_budget,
+            budget_requested: self.budget_requested,
+            tau: self.tau,
+            gate: if self.gated { "admission" } else { "none" },
+        }
+    }
+}
+
+/// What `select_and_postpass` hands back: the selection plus the facts about
+/// how it was made that the renderers and provenance report.
+pub struct PostpassOutcome {
+    pub selected: Vec<Fragment>,
+    pub selection_iters: usize,
+    pub stopping_certificate: f64,
+    pub stand_in_ids: FxHashSet<FragmentId>,
+    pub tau: f64,
+    pub gated: bool,
 }
 
 /// Selection + the two admission-gated post-passes — the git-free part of
@@ -738,7 +779,7 @@ pub fn select_and_postpass(
     objective: crate::mode::ObjectiveMode,
     effective_budget: u32,
     tau: Option<f64>,
-) -> (Vec<Fragment>, usize, f64, FxHashSet<FragmentId>) {
+) -> PostpassOutcome {
     // A scorer with no admission gate (BM25 builds no graph, so it has no
     // declared-related set to gate on) is bounded by the threshold alone, so
     // an unspecified tau resolves to the ungated operating point instead of
@@ -818,12 +859,14 @@ pub fn select_and_postpass(
         scoring_result.admissible_files.as_ref(),
     );
 
-    (
+    PostpassOutcome {
         selected,
         selection_iters,
         stopping_certificate,
         stand_in_ids,
-    )
+        tau,
+        gated: !ungated,
+    }
 }
 
 /// What the change summary costs before a single fragment is selected.
@@ -894,7 +937,14 @@ pub fn run_selection(
 
     let selection_budget = effective_budget.saturating_sub(state.envelope_tokens);
 
-    let (mut selected, selection_iters, stopping_certificate, stand_in_ids) = select_and_postpass(
+    let PostpassOutcome {
+        mut selected,
+        selection_iters,
+        stopping_certificate,
+        stand_in_ids,
+        tau: tau_effective,
+        gated,
+    } = select_and_postpass(
         &state.scoring_result,
         &state.all_fragments,
         &state.core_ids,
@@ -938,6 +988,9 @@ pub fn run_selection(
         stopping_certificate,
         select_ms,
         stand_in_ids,
+        budget_requested: budget_tokens,
+        tau: tau_effective,
+        gated,
     }
 }
 
@@ -955,6 +1008,7 @@ pub fn select_with_params(
     no_content: bool,
 ) -> DiffContextOutput {
     let outcome = run_selection(state, budget_tokens, tau);
+    let selection_provenance = outcome.selection_provenance();
     let stand_in_ids = outcome.stand_in_ids;
     let selected = outcome.selected;
     let selection_iters = outcome.selection_iters;
@@ -1031,6 +1085,7 @@ pub fn select_with_params(
             .map(|&(category, raw, deduped)| (category.as_str(), raw, deduped))
             .collect(),
     });
+    output.provenance = Some(state.provenance.finish(Some(selection_provenance), true));
     output
 }
 
@@ -1437,20 +1492,31 @@ fn deletion_rename_displays(
     (deleted, renamed)
 }
 
-fn empty_scored_state_with_changes(root_dir: PathBuf, diff_range: Option<&str>) -> ScoredState {
+fn empty_scored_state_with_changes(
+    root_dir: PathBuf,
+    diff_range: Option<&str>,
+    timeout: u64,
+) -> ScoredState {
     let (deleted, renamed) = deletion_rename_displays(&root_dir, diff_range);
-    let mut state = empty_scored_state(root_dir);
+    let mut state = empty_scored_state(root_dir, diff_range, timeout);
     state.deleted_files = deleted;
     state.renamed_files = renamed;
     state.envelope_tokens = envelope_tokens_of(&state);
     state
 }
 
-fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
+fn empty_scored_state(root_dir: PathBuf, diff_range: Option<&str>, timeout: u64) -> ScoredState {
     let config = PipelineConfig::from_mode(ScoringMode::Ego);
+    let provenance = crate::run_provenance::RunProvenance::new(
+        &root_dir,
+        diff_range,
+        crate::effective_config::EffectiveConfigV1::resolve(&config),
+        timeout,
+    );
     ScoredState {
         root_dir,
         config,
+        provenance,
         all_fragments: Vec::new(),
         core_ids: FxHashSet::default(),
         core_excerpts: FxHashMap::default(),

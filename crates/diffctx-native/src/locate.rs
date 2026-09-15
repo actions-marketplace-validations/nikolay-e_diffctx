@@ -41,6 +41,8 @@ pub struct LocateOutput {
     /// when there is something to report, so a clean run costs no tokens.
     #[serde(skip_serializing_if = "Coverage::is_clean")]
     pub coverage: Coverage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<crate::run_provenance::ProvenanceV1>,
     /// Ranked candidates that did not fit `budget_tokens`, without bodies.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub overflow: Vec<OverflowItem>,
@@ -517,6 +519,11 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
         coverage: build_coverage(state, outcome, next_up, &attribution),
         overflow,
         overflow_count,
+        provenance: Some(
+            state
+                .provenance
+                .finish(Some(outcome.selection_provenance()), false),
+        ),
     }
 }
 

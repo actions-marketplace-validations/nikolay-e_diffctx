@@ -75,6 +75,10 @@ pub struct DiffContextOutput {
     pub fragments: Vec<FragmentEntry>,
     #[serde(skip)]
     pub latency: Option<LatencyBreakdown>,
+    /// Absent only for outputs no pipeline run produced (the in-memory
+    /// harness, an empty tree).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<crate::run_provenance::ProvenanceV1>,
 }
 
 pub struct LatencyBreakdown {
@@ -302,6 +306,7 @@ impl DiffContextOutput {
             fragment_count: 0,
             fragments: Vec::new(),
             latency: None,
+            provenance: None,
         }
     }
 }
@@ -458,6 +463,7 @@ pub fn build_diff_context_output(
         fragment_count: fragments_out.len(),
         fragments: fragments_out,
         latency: None,
+        provenance: None,
     }
 }
 
@@ -479,6 +485,7 @@ mod tests {
             fragment_count: 0,
             fragments: Vec::new(),
             latency: None,
+            provenance: None,
         }
     }
 

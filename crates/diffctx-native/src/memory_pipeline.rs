@@ -131,7 +131,11 @@ pub fn build_diff_context_in_memory(
     let selection_budget =
         effective_budget.saturating_sub(crate::pipeline::envelope_token_cost(None, &listed));
 
-    let (mut selected, _, _, stand_in_ids) = crate::pipeline::select_and_postpass(
+    let crate::pipeline::PostpassOutcome {
+        mut selected,
+        stand_in_ids,
+        ..
+    } = crate::pipeline::select_and_postpass(
         &scoring_result,
         &all_fragments,
         &core_ids,

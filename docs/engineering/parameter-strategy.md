@@ -123,7 +123,8 @@ it) to enable the sweep without rebuild.
 > `DIFFCTX_NO_COMMIT_SIGNAL`, `DIFFCTX_MAX_FRAGMENTS`,
 > `DIFFCTX_FILE_ADMISSION`, `DIFFCTX_PIT_SHAPE`,
 > `DIFFCTX_PIT_TRANSFORM`, `DIFFCTX_MAX_EDGES_PER_NODE`,
-> `DIFFCTX_TRACE_BUILDERS`, and the
+> `DIFFCTX_TRACE_BUILDERS`, `DIFFCTX_TOKEN_SAFETY_FACTOR`,
+> `DIFFCTX_EVAL_STRICT`, and the
 > `DIFFCTX_PROVENANCE_DUMP=<path>` per-candidate telemetry sink) — are experimental
 > calibration knobs for research and sensitivity analysis, not a supported
 > public API. They are undocumented in `--help` on purpose and may change or

@@ -340,7 +340,48 @@ fn diff_context_output_to_dict<'py>(
         latency.set_item("total_ms", (total * 10.0).round() / 10.0)?;
     }
     dict.set_item("latency", latency)?;
+    if let Some(ref provenance) = output.provenance {
+        let value = serde_json::to_value(provenance)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        dict.set_item("provenance", json_to_py(py, &value)?)?;
+    }
     Ok(dict)
+}
+
+/// A serde value as the Python object it denotes. The bridge used to spell
+/// every field of every struct by hand (`set_item` per key), which is how a
+/// field added on one side went missing on the other (#183, #229); anything
+/// that is already `Serialize` crosses through this instead.
+fn json_to_py<'py>(py: Python<'py>, value: &serde_json::Value) -> PyResult<Bound<'py, PyAny>> {
+    use pyo3::IntoPyObjectExt;
+    Ok(match value {
+        serde_json::Value::Null => py.None().into_bound(py),
+        serde_json::Value::Bool(b) => b.into_bound_py_any(py)?,
+        serde_json::Value::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                i.into_bound_py_any(py)?
+            } else if let Some(u) = n.as_u64() {
+                u.into_bound_py_any(py)?
+            } else {
+                n.as_f64().unwrap_or(f64::NAN).into_bound_py_any(py)?
+            }
+        }
+        serde_json::Value::String(s) => s.into_bound_py_any(py)?,
+        serde_json::Value::Array(items) => {
+            let list = PyList::empty(py);
+            for item in items {
+                list.append(json_to_py(py, item)?)?;
+            }
+            list.into_any()
+        }
+        serde_json::Value::Object(map) => {
+            let dict = PyDict::new(py);
+            for (k, v) in map {
+                dict.set_item(k, json_to_py(py, v)?)?;
+            }
+            dict.into_any()
+        }
+    })
 }
 
 #[pyfunction]

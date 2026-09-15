@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Every run records what produced it.** JSON and YAML output (and the
+  Python dict) carry a `provenance` block — `diffctx.provenance.v1`: engine
+  version, the input revisions as object ids, the resolved effective
+  configuration (`diffctx.effective_config.v1`: every parameter and every
+  `DIFFCTX_*` override that shaped the selection) and its 64-bit hash, the
+  selection parameters actually used (budget, tau, gate), the tokenizer, and
+  the resource limits in force. `locate` output carries the hash alone. Two
+  runs that differ can now say what differed between them.
+- **`DIFFCTX_EVAL_STRICT=1`** refuses to start when the environment carries a
+  `DIFFCTX_*` name the effective configuration does not know — an evaluation
+  row shaped by an undeclared knob is a number nobody can reproduce.
+- **`DIFFCTX_TOKEN_SAFETY_FACTOR`** (≥ 1.0, default 1.0) scales every token
+  count for consumers whose model tokenizes denser than `o200k_base`;
+  `--budget N` stays "N o200k_base accounting tokens" and the factor is in
+  provenance. No model-specific default is shipped.
+
 ### Security
 
 - **A `diff_ref` could turn the read-only MCP fetch into a file write.** With

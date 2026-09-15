@@ -206,6 +206,19 @@ fn empty_tree_oid(repo_root: &Path) -> String {
     }
 }
 
+/// The commit object id a revision names, for provenance: the ref may move,
+/// the id does not. `None` for anything git cannot resolve to a commit.
+pub fn rev_oid(repo_root: &Path, rev: &str) -> Option<String> {
+    if validate_rev(rev).is_err() {
+        return None;
+    }
+    let spec = format!("{rev}^{{commit}}");
+    run_git(repo_root, &["rev-parse", "--verify", "--quiet", &spec])
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 fn rev_exists(repo_root: &Path, rev: &str) -> bool {
     if validate_rev(rev).is_err() {
         return false;

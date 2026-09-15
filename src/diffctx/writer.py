@@ -160,6 +160,31 @@ def _write_yaml_path_list(file: TextIO, key: str, paths: list[Any]) -> None:
         file.write(f'  - "{_escape_yaml_string(str(path))}"\n')
 
 
+def _write_yaml_value(file: TextIO, key: str, value: Any, indent: str) -> None:
+    if isinstance(value, dict):
+        if not value:
+            file.write(f"{indent}{key}: {{}}\n")
+            return
+        file.write(f"{indent}{key}:\n")
+        for sub_key, sub_value in value.items():
+            _write_yaml_value(file, str(sub_key), sub_value, indent + "  ")
+    elif isinstance(value, list):
+        if not value:
+            file.write(f"{indent}{key}: []\n")
+            return
+        file.write(f"{indent}{key}:\n")
+        for item in value:
+            file.write(f'{indent}  - "{_escape_yaml_string(str(item))}"\n')
+    elif isinstance(value, bool):
+        file.write(f"{indent}{key}: {'true' if value else 'false'}\n")
+    elif isinstance(value, (int, float)):
+        file.write(f"{indent}{key}: {value}\n")
+    elif value is None:
+        file.write(f"{indent}{key}: null\n")
+    else:
+        file.write(f'{indent}{key}: "{_escape_yaml_string(str(value))}"\n')
+
+
 def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_message"):
         file.write(f'commit_message: "{_escape_yaml_string(str(tree["commit_message"]))}"\n')
@@ -185,6 +210,8 @@ def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
         file.write("fragments:\n")
         for frag in tree["fragments"]:
             _write_yaml_fragment(file, frag, "  ")
+    if tree.get("provenance"):
+        _write_yaml_value(file, "provenance", tree["provenance"], "")
 
 
 def write_tree_yaml(file: TextIO, tree: dict[str, Any]) -> None:
