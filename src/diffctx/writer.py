@@ -114,6 +114,9 @@ def _write_yaml_node(file: TextIO, node: dict[str, Any], indent: str = "") -> No
     if node.get("truncated"):
         file.write(f"{indent}  truncated: true\n")
 
+    if node.get("redactions"):
+        file.write(f"{indent}  redactions: {node['redactions']}\n")
+
     if "content" in node:
         _write_yaml_content(file, node["content"], indent + "  ")
 

@@ -101,6 +101,17 @@
           "type": "null"
         }
       ]
+    },
+    "redactions": {
+      "description": "Present only when the sanitizer replaced a credential-shaped string\nsomewhere in this artifact — fragment text, a commit message.",
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Redactions"
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [
@@ -821,6 +832,28 @@
         "candidate_files",
         "edge_contributions",
         "final_edges"
+      ]
+    },
+    "Redactions": {
+      "description": "What the sanitizer removed from one artifact.",
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        },
+        "categories": {
+          "description": "Distinct shapes matched, in the order first seen.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "count",
+        "categories"
       ]
     }
   }

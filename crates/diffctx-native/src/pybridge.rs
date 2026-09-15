@@ -336,6 +336,15 @@ fn withheld_paths(py: Python<'_>, root_dir: &str, rel_paths: Vec<String>) -> Vec
     py.detach(move || crate::pipeline::withheld_paths(&root, &rel_paths))
 }
 
+/// The artifact sanitizer for the surfaces Python reads itself (tree mode,
+/// the MCP fetch and glob tools): the clean text, how many credential
+/// shapes were replaced, and which.
+#[pyfunction]
+fn sanitize_text(text: &str) -> (String, usize, Vec<&'static str>) {
+    let (clean, r) = crate::sanitize::sanitize(text);
+    (clean, r.count, r.categories)
+}
+
 #[pyfunction]
 fn count_tokens(py: Python<'_>, text: &str) -> PyResult<u32> {
     let owned = text.to_string();
@@ -603,6 +612,7 @@ pub fn _diffctx(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(get_language_for_file, m)?)?;
     m.add_function(wrap_pyfunction!(count_tokens, m)?)?;
     m.add_function(wrap_pyfunction!(is_secret_path, m)?)?;
+    m.add_function(wrap_pyfunction!(sanitize_text, m)?)?;
     m.add_function(wrap_pyfunction!(withheld_paths, m)?)?;
     m.add_function(wrap_pyfunction!(build_project_graph, m)?)?;
     m.add_function(wrap_pyfunction!(hotspots, m)?)?;

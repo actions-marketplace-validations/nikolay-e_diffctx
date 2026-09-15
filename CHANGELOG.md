@@ -83,6 +83,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- **Credential-shaped strings are redacted on every read surface** (#147).
+  A last pass over the diff artifact (fragments, commit messages), the
+  `--with-raw-diff` bundle, the MCP fetch and glob readers and tree mode
+  replaces strings matching a small set of high-confidence shapes — AWS
+  access key ids, GitHub, Slack, Stripe, Google and OpenAI keys, JWTs, PEM
+  private-key blocks — with `[REDACTED:<category>]`; the artifact carries a
+  `redactions` block (count, categories) and `sanitization_redaction` among
+  its coverage limit reasons. Defence in depth, not a guarantee: only shapes
+  that cannot be anything else are matched, and SECURITY.md says what is not
+  caught. The withhold policy (secret-by-name files, ignore rules) is
+  unchanged and remains the mechanism to rely on.
 - **A `diff_ref` could turn the read-only MCP fetch into a file write.** With
   `fragment_ids` set the engine never sees `diff_ref`, and `fetch_fragments`
   passed whatever followed `..` straight to `git show <rev>:<path>` — so

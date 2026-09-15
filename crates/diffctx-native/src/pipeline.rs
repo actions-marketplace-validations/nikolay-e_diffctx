@@ -1369,7 +1369,11 @@ pub fn select_with_params(
             .collect(),
     });
     output.provenance = Some(state.provenance.finish(Some(selection_provenance)));
-    output.coverage = crate::resource::CoverageReport::from_context(&state.run, &selection_limits);
+    let mut limits = selection_limits;
+    if output.redactions.is_some() {
+        limits.push(crate::resource::LimitReason::SanitizationRedaction);
+    }
+    output.coverage = crate::resource::CoverageReport::from_context(&state.run, &limits);
     output
 }
 
@@ -1527,7 +1531,9 @@ pub fn raw_diff_text(root_dir: &Path, diff_range: Option<&str>, timeout: u64) ->
     let root_dir = resolve_repo_root(root_dir)?;
     let resolved = git::resolve_duration_range(&root_dir, diff_range)?;
     let diff_text = git::get_diff_text(&root_dir, resolved.range.as_deref())?;
-    Ok(keep_disclosable_sections(&root_dir, &diff_text))
+    let mut disclosable = keep_disclosable_sections(&root_dir, &diff_text);
+    crate::sanitize::sanitize_in_place(&mut disclosable);
+    Ok(disclosable)
 }
 
 fn keep_disclosable_sections(root_dir: &Path, diff_text: &str) -> String {
@@ -1860,7 +1866,12 @@ pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput 
     output.ignored_changes = state.ignored_changes.clone();
     output.policy_excluded_count = state.policy_excluded_count;
     output.provenance = Some(state.provenance.finish(None));
-    output.coverage = crate::resource::CoverageReport::from_context(&state.run, &[]);
+    let limits: &[crate::resource::LimitReason] = if output.redactions.is_some() {
+        &[crate::resource::LimitReason::SanitizationRedaction]
+    } else {
+        &[]
+    };
+    output.coverage = crate::resource::CoverageReport::from_context(&state.run, limits);
     output
 }
 

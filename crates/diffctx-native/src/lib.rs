@@ -53,6 +53,7 @@ pub(crate) mod peak_rss;
 pub mod pipeline;
 pub mod resource;
 pub mod run_provenance;
+pub mod sanitize;
 #[cfg(test)]
 pub(crate) mod test_rng;
 pub(crate) mod types;

@@ -123,6 +123,10 @@ pub struct DiffContextOutput {
     /// what was consumed. A complete run's output carries no block.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub coverage: Option<crate::resource::CoverageReport>,
+    /// Present only when the sanitizer replaced a credential-shaped string
+    /// somewhere in this artifact — fragment text, a commit message.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub redactions: Option<crate::sanitize::Redactions>,
 }
 
 /// JSON Schema 2020-12 for `diffctx.context.v1`, generated from the type —
@@ -395,6 +399,7 @@ impl DiffContextOutput {
             latency: None,
             provenance: None,
             coverage: None,
+            redactions: None,
         }
     }
 }
@@ -530,6 +535,24 @@ pub fn build_diff_context_output(
     fragments_out.extend(changed.into_iter().map(|(_, _, e)| e));
     fragments_out.extend(context.into_iter().map(|(_, _, _, e)| e));
 
+    let mut redactions = crate::sanitize::Redactions::default();
+    for entry in &mut fragments_out {
+        if let Some(content) = entry.content.as_deref() {
+            let (clean, found) = crate::sanitize::sanitize(content);
+            if !found.is_empty() {
+                entry.content = Some(Arc::from(clean));
+                redactions.merge(found);
+            }
+        }
+    }
+    let mut change = change;
+    if let Some(m) = change.commit_message.as_mut() {
+        redactions.merge(crate::sanitize::sanitize_in_place(m));
+    }
+    for m in &mut change.commit_messages {
+        redactions.merge(crate::sanitize::sanitize_in_place(m));
+    }
+
     let resolved = repo_root
         .canonicalize()
         .unwrap_or_else(|_| repo_root.to_path_buf());
@@ -566,6 +589,7 @@ pub fn build_diff_context_output(
         latency: None,
         provenance: None,
         coverage: None,
+        redactions: (!redactions.is_empty()).then_some(redactions),
     }
 }
 
@@ -592,6 +616,7 @@ mod tests {
             latency: None,
             provenance: None,
             coverage: None,
+            redactions: None,
         }
     }
 
