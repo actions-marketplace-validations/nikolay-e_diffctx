@@ -166,6 +166,7 @@ pub fn build_diff_context_locate(
             tau: tau.unwrap_or(crate::config::limits::DEFAULT_STOPPING_THRESHOLD),
             gated: false,
             limit_reasons: Vec::new(),
+            commit_messages: state.commit_messages.clone(),
         }
     } else {
         run_selection(&state, budget_tokens, tau)
@@ -910,6 +911,36 @@ pub struct SelectionOutcome {
     /// What this selection could not honour — per outcome, not per state,
     /// because one state serves many budgets in a sweep.
     pub limit_reasons: Vec<crate::resource::LimitReason>,
+    /// The range's commit messages as this budget affords them.
+    pub commit_messages: Vec<String>,
+}
+
+/// Tokens one inventory row (`changes[]`) costs beyond its path.
+const INVENTORY_ENTRY_TOKENS: u32 = 8;
+
+/// Every subject stays; bodies are kept, newest first, while the whole list
+/// fits `cap_tokens`. A range's commit bodies are the reader's "why", but
+/// twenty GitOps commits of prose must not crowd the change out of a small
+/// budget.
+pub(crate) fn trim_commit_messages(messages: &[String], cap_tokens: u32) -> Vec<String> {
+    let subjects: Vec<String> = messages
+        .iter()
+        .map(|m| m.lines().next().unwrap_or("").trim().to_string())
+        .collect();
+    let mut trimmed = subjects.clone();
+    let mut used: u32 = subjects.iter().map(|s| count_tokens(s) + 1).sum();
+    for (i, message) in messages.iter().enumerate() {
+        if message.trim() == subjects[i] {
+            continue;
+        }
+        let extra = count_tokens(message).saturating_sub(count_tokens(&subjects[i]));
+        if used + extra > cap_tokens {
+            break;
+        }
+        used += extra;
+        trimmed[i] = message.trim().to_string();
+    }
+    trimmed
 }
 
 /// The evidence floor's ordering: the class of every changed file keyed by
@@ -1140,7 +1171,21 @@ pub fn run_selection(
         auto.clamp(BUDGET.auto_min, BUDGET.auto_max)
     });
 
-    let selection_budget = effective_budget.saturating_sub(state.envelope_tokens);
+    // Beyond the path lists the artifact carries an inventory row per
+    // changed file and the range's commit messages, the latter bounded to a
+    // tenth of the budget (subjects always, bodies while they fit). Both are
+    // charged here, per outcome, since the bound follows the budget.
+    let commit_messages = trim_commit_messages(&state.commit_messages, effective_budget / 10);
+    let messages_extra = count_tokens(&commit_messages.join("\n")).saturating_sub(
+        state
+            .commit_message
+            .as_deref()
+            .map(count_tokens)
+            .unwrap_or(0),
+    );
+    let inventory = state.changed_files.len() as u32 * INVENTORY_ENTRY_TOKENS;
+    let selection_budget =
+        effective_budget.saturating_sub(state.envelope_tokens + messages_extra + inventory);
 
     let evidence_priority = evidence_priority_of(&state.changed_files, &state.change_classes);
     let PostpassOutcome {
@@ -1214,6 +1259,7 @@ pub fn run_selection(
     let select_ms = t_start.elapsed().as_secs_f64() * 1000.0;
     SelectionOutcome {
         limit_reasons,
+        commit_messages,
         selected,
         effective_budget,
         selection_budget,
@@ -1243,6 +1289,7 @@ pub fn select_with_params(
     let outcome = run_selection(state, budget_tokens, tau);
     let selection_provenance = outcome.selection_provenance();
     let selection_limits = outcome.limit_reasons.clone();
+    let commit_messages = outcome.commit_messages.clone();
     let stand_in_ids = outcome.stand_in_ids;
     let selected = outcome.selected;
     let selection_iters = outcome.selection_iters;
@@ -1262,7 +1309,7 @@ pub fn select_with_params(
     let cap_stats = state.scoring_result.graph.cap_stats.clone();
     let change = render::ChangeSummary {
         commit_message: state.commit_message.clone(),
-        commit_messages: state.commit_messages.clone(),
+        commit_messages,
         changes: state.change_classes.clone(),
         changed_files: state
             .changed_files

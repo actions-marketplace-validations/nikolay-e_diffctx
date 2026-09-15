@@ -121,9 +121,6 @@
         "class": {
           "$ref": "#/$defs/ChangeClass"
         },
-        "reason": {
-          "type": "string"
-        },
         "represented": {
           "type": "boolean"
         }
@@ -131,7 +128,6 @@
       "required": [
         "path",
         "class",
-        "reason",
         "represented"
       ]
     },

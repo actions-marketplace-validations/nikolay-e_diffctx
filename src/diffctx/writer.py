@@ -640,15 +640,33 @@ def _render(tree: dict[str, Any], output_format: str) -> str:
     return buf.getvalue()
 
 
+_CLASS_DROP_ORDER = {"generated": 0, "mechanical": 1, "unknown": 2, "content": 3}
+
+
+def _drop_index(fragments: list[dict[str, Any]], classes: dict[str, str]) -> int:
+    # The same order the selection policy admits in, reversed: context from
+    # the tail first; then a changed file's second fragment before any file
+    # loses its only one; then witnesses by class, mechanical bumps before
+    # hand-written content, so a tight budget keeps what a reviewer needs.
+    context = [i for i, f in enumerate(fragments) if f.get("role") != "changed"]
+    if context:
+        return context[-1]
+    per_file: dict[str, int] = {}
+    for f in fragments:
+        per_file[str(f.get("path"))] = per_file.get(str(f.get("path")), 0) + 1
+    seconds = [i for i, f in enumerate(fragments) if per_file[str(f.get("path"))] > 1]
+    if seconds:
+        return seconds[-1]
+    return max(
+        range(len(fragments)),
+        key=lambda i: (-_CLASS_DROP_ORDER.get(classes.get(str(fragments[i].get("path")), "content"), 3), i),
+    )
+
+
 def _drop_one_fragment(tree: dict[str, Any]) -> dict[str, Any]:
     fragments = list(tree["fragments"])
-    # Context goes first, from the tail (lowest relevance); a changed
-    # fragment only once no context is left.
-    index = next(
-        (i for i in range(len(fragments) - 1, -1, -1) if fragments[i].get("role") != "changed"),
-        len(fragments) - 1,
-    )
-    fragments.pop(index)
+    classes = {str(c["path"]): str(c.get("class", "content")) for c in tree.get("changes") or []}
+    fragments.pop(_drop_index(fragments, classes))
     represented = {str(f.get("path")) for f in fragments}
     trimmed = {**tree, "fragments": fragments, "fragment_count": len(fragments)}
     if tree.get("changes"):

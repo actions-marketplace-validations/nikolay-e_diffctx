@@ -40,7 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   commits, 2 000 characters each — newest first; Markdown and text render
   them instead of the subject of whichever commit happened to be last, and
   every message feeds the query expansion, not only the head's subject.
-  `commit_message` stays the head's subject for existing readers.
+  `commit_message` stays the head's subject for existing readers. The list is
+  bounded by the budget — every subject, bodies newest-first while they fit a
+  tenth of it — and, like the inventory rows, charged before selection.
 - **One artifact, `diffctx.context.v1`, on every surface.** JSON and YAML
   output open with `schema: diffctx.context.v1`; the document is generated
   from the engine's type and pinned as `schemas/diffctx.context.v1.json`

@@ -512,7 +512,7 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
             .map(|n| n.to_string_lossy().to_string())
             .unwrap_or_else(|| state.root_dir.to_string_lossy().to_string()),
         commit_message: state.commit_message.clone(),
-        commit_messages: state.commit_messages.clone(),
+        commit_messages: outcome.commit_messages.clone(),
         changed_files: state
             .changed_files
             .iter()

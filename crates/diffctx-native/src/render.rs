@@ -66,7 +66,6 @@ pub struct RenameEntry {
 pub struct ChangeEntry {
     pub path: String,
     pub class: crate::change_class::ChangeClass,
-    pub reason: &'static str,
     pub represented: bool,
 }
 
@@ -542,11 +541,10 @@ pub fn build_diff_context_output(
     let changes: Vec<ChangeEntry> = change
         .changes
         .into_iter()
-        .map(|(path, class, reason)| ChangeEntry {
+        .map(|(path, class, _reason)| ChangeEntry {
             represented: by_path.contains_key(&path),
             path,
             class,
-            reason,
         })
         .collect();
 
