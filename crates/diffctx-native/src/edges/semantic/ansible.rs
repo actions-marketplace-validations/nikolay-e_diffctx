@@ -147,8 +147,7 @@ impl EdgeBuilder for AnsibleEdgeBuilder {
         // files were 22k emissions), never two fragments of one file, and
         // capped like the directory-sibling channel so a monster role does
         // not become naming-reachable from itself.
-        let owned: Vec<Fragment> = frags.iter().map(|f| (*f).clone()).collect();
-        let reps = file_representatives(&owned);
+        let reps = file_representatives(frags.iter().copied());
         let mut role_files: FxHashMap<String, Vec<&FragmentId>> = FxHashMap::default();
         for (path, rep) in &reps {
             if let Some(role) = get_role_name(Path::new(path)) {

@@ -154,7 +154,11 @@ impl FragmentIndex {
 }
 
 /// One representative fragment per file — the largest by token count, ties
-/// resolved by first-seen order. This is the semantics `SiblingEdgeBuilder`
+/// resolved by position (the earliest, then the shortest), so every caller
+/// names the same fragment whatever order it holds the fragments in: the
+/// edge builders see a language's subset, the scorer sees them all, and a
+/// seed lifted to "its file" must land where the import edges landed.
+/// This is the semantics `SiblingEdgeBuilder`
 /// always used for its file-level edges; file-level *relations* (an include,
 /// a header/impl pair, a path reference) link representatives rather than
 /// every-fragment-to-every-fragment, because the relation names the file. A
@@ -166,20 +170,29 @@ impl FragmentIndex {
 /// spread the relation to every sibling was measured net-negative on the
 /// corpus (#208) and removed — an accepted trade: a file-level relation
 /// endorses the file, not each of its siblings.
-pub fn file_representatives(fragments: &[Fragment]) -> FxHashMap<String, FragmentId> {
-    let mut file_to_rep: FxHashMap<String, FragmentId> = FxHashMap::default();
-    let mut file_to_token_count: FxHashMap<String, u32> = FxHashMap::default();
+pub fn file_representatives<'a>(
+    fragments: impl IntoIterator<Item = &'a Fragment>,
+) -> FxHashMap<String, FragmentId> {
+    let mut file_to_rep: FxHashMap<String, (u32, FragmentId)> = FxHashMap::default();
 
     for f in fragments {
-        let path = f.path().to_string();
-        let existing_count = file_to_token_count.get(&path).copied().unwrap_or(0);
-        if !file_to_rep.contains_key(&path) || f.token_count > existing_count {
-            file_to_rep.insert(path.clone(), f.id.clone());
-            file_to_token_count.insert(path, f.token_count);
+        let better = |cur: &(u32, FragmentId)| {
+            f.token_count > cur.0
+                || (f.token_count == cur.0
+                    && (f.id.start_line, f.id.end_line) < (cur.1.start_line, cur.1.end_line))
+        };
+        match file_to_rep.get(f.path()) {
+            Some(cur) if !better(cur) => {}
+            _ => {
+                file_to_rep.insert(f.path().to_string(), (f.token_count, f.id.clone()));
+            }
         }
     }
 
     file_to_rep
+        .into_iter()
+        .map(|(path, (_, id))| (path, id))
+        .collect()
 }
 
 pub fn add_edge(

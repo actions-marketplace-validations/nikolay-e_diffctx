@@ -166,8 +166,7 @@ fn module_targets(
     frag_defines: &FxHashMap<FragmentId, FxHashSet<String>>,
     repo_root: Option<&Path>,
 ) -> ModuleTargets {
-    let owned: Vec<Fragment> = py_frags.iter().map(|f| (*f).clone()).collect();
-    let reps_by_path = base::file_representatives(&owned);
+    let reps_by_path = base::file_representatives(py_frags.iter().copied());
     let mut reps: FxHashMap<String, FragmentId> = FxHashMap::default();
     let mut defs: FxHashMap<String, FxHashMap<String, FragmentId>> = FxHashMap::default();
     for f in py_frags {

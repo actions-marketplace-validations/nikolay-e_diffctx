@@ -330,18 +330,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **The Python identifier and import channels are bounded on their own**
-  (#196). A name used in more than 64 files without importing its definer
-  (`hass`, `config`, `entry` — a fixture, a parameter, a word) is
-  vocabulary and no longer fans out to its definitions; an import links the
-  importing fragment to the module's representative fragment and, for
-  `from m import x`, to the fragment that defines `x`, instead of to every
-  fragment of the module. Relative imports resolve to the sibling module
-  they name (`from .coordinator import C` confirms the `coordinator` edge; it
-  used to confirm only the package). Same home-assistant instance, same
-  machine: 38.1M → 2.8M python edges, 100 s → 22 s wall, 10.9 → 2.8 GB
-  peak RSS, and the artifact is complete again without touching the
-  contribution cap. Edge-weight profile `v2-2026-09-16`; corpus unchanged.
+- **File-level relations land on one fragment per file, and a change
+  lifts to its file** (#196). An import, a directory sibling, a shared
+  package or crate root, a covering test are relations between files: the
+  Python, Rust and Go builders link the file's representative fragment (the
+  same one every builder names, ties now broken by position rather than by
+  the order a builder happened to hold the fragments in), and `from m import
+  x` / `pkg.Sym` / `Mod::sym` link the fragment that defines the named
+  symbol. In return the ego walk seeds each changed fragment's file
+  representative at the containment discount, so a function added to an
+  existing module still meets the module's importers and its tests. A name
+  used in more than 64 files without importing its definer (`hass`,
+  `config`, `entry`) is vocabulary and no longer fans out to its
+  definitions; qualified calls (`Type::new(`, `pkg.New(`), method calls
+  and definition lines no longer feed the unqualified call channel, which
+  linked every `::new(` to every `fn new` in reach; Go imports come from
+  the import block, not from any quoted line; Python relative imports
+  resolve to the sibling module they name. Same machine, same instances as
+  the issue's table: home-assistant 38.1M → 2.8M python edges, 100 s → 24 s,
+  10.9 → 2.5 GB; polars 35.4M → 0.8M rust edges, 54 s → 4 s, 5.4 → 0.8 GB;
+  kubernetes 14.3M → 4.9M go edges (the rest of that run is parsing).
+  Q-class: 16 corpus cases lift above the threshold, one `gap` case is
+  baselined (`gap_132`: the file lift admits a consumer of a sibling type).
+  Edge-weight profile `v2-2026-09-16`.
 - **One heavy phase for the product and the corpus harness.** From the
   fragments onward — token counts, cores and their stand-ins, signature
   variants, seed weights, scoring, information needs — both paths call

@@ -9,6 +9,7 @@ use crate::config::edge_weights::SEMANTIC_DISCOVERY;
 use crate::config::limits::{LIMITS, PPR};
 use crate::config::scoring::{EGO, PIT, RRF};
 use crate::config::tokenization::TOKENIZATION;
+use crate::config::weights::EDGE_WEIGHTS;
 use crate::edges;
 use crate::filtering;
 use crate::graph::{self, Graph};
@@ -131,12 +132,8 @@ impl ScoringStrategy for PPRScoring {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
         let t_graph = Instant::now();
         let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive, ctx);
-        let admissible_files = file_admission_enabled().then(|| {
-            edges::naming_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
-        });
-        let declared_admissible_files = file_admission_enabled().then(|| {
-            edges::declared_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
-        });
+        let seeds = lift_to_files(all_fragments, core_ids);
+        let (admissible_files, declared_admissible_files) = admission(&capped, &seeds);
         let mut g = graph::build_graph_capped(all_fragments, capped);
         let graph_build_ms = t_graph.elapsed().as_secs_f64() * 1000.0;
         let ppr = personalized_pagerank(
@@ -185,6 +182,45 @@ impl EgoGraphScoring {
     }
 }
 
+/// The cores at 1.0 plus, for each core that is not its file's
+/// representative fragment, that representative at the containment
+/// discount (one hop of 0.5 measured against 0.25: 22 corpus cases lifted
+/// against 13, one lost either way). File-level relations — an import, a covering test, a directory
+/// sibling — land on the representative (#208), so a function added to an
+/// existing module meets its importers and its tests only if the change
+/// is also, at a discount, a change to the file.
+fn lift_to_files(
+    all_fragments: &[Fragment],
+    core_ids: &FxHashSet<FragmentId>,
+) -> FxHashMap<FragmentId, f64> {
+    let reps = edges::base::file_representatives(all_fragments);
+    let mut seeds: FxHashMap<FragmentId, f64> = core_ids.iter().map(|c| (c.clone(), 1.0)).collect();
+    let lift = EDGE_WEIGHTS["containment"].forward;
+    for core in core_ids {
+        if let Some(rep) = reps.get(core.path.as_ref()) {
+            if !core_ids.contains(rep) {
+                seeds.entry(rep.clone()).or_insert(lift);
+            }
+        }
+    }
+    seeds
+}
+
+/// File admission walks from the lifted seeds: the file a change sits in
+/// is where its imports and tests attach, so a change to a non-representative
+/// fragment must be allowed to reach them.
+fn admission(
+    capped: &graph::CappedEdges,
+    seeds: &FxHashMap<FragmentId, f64>,
+) -> (Option<FxHashSet<Arc<str>>>, Option<FxHashSet<Arc<str>>>) {
+    let ids: FxHashSet<FragmentId> = seeds.keys().cloned().collect();
+    let naming = file_admission_enabled()
+        .then(|| edges::naming_reachable_files(capped, &ids, SEMANTIC_DISCOVERY.max_depth));
+    let declared = file_admission_enabled()
+        .then(|| edges::declared_reachable_files(capped, &ids, SEMANTIC_DISCOVERY.max_depth));
+    (naming, declared)
+}
+
 impl ScoringStrategy for EgoGraphScoring {
     fn score_and_filter(
         &self,
@@ -199,15 +235,11 @@ impl ScoringStrategy for EgoGraphScoring {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
         let t_graph = Instant::now();
         let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive, ctx);
-        let admissible_files = file_admission_enabled().then(|| {
-            edges::naming_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
-        });
-        let declared_admissible_files = file_admission_enabled().then(|| {
-            edges::declared_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
-        });
+        let seeds = lift_to_files(all_fragments, core_ids);
+        let (admissible_files, declared_admissible_files) = admission(&capped, &seeds);
         let g = graph::build_graph_capped(all_fragments, capped);
         let graph_build_ms = t_graph.elapsed().as_secs_f64() * 1000.0;
-        let mut rel_scores = g.ego_graph(core_ids, self.max_depth);
+        let mut rel_scores = g.ego_graph_weighted(&seeds, self.max_depth);
 
         let diff_idents: FxHashSet<String> = all_fragments
             .iter()
