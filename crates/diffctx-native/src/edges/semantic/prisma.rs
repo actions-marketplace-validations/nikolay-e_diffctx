@@ -8,7 +8,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edge, add_edges_from_ids};
 
 fn is_prisma_file(path: &Path) -> bool {
     base::has_ext(path, &[".prisma"])
@@ -103,17 +103,17 @@ impl EdgeBuilder for PrismaEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let prisma_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_prisma_file(f)).collect();
-        if prisma_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &prisma_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_type_refs(&content));
-            }
-        }
-        refs.insert("prisma".to_string());
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_prisma_file(p),
+            |c| {
+                extract_type_refs(c)
+                    .into_iter()
+                    .chain(["prisma".to_string()])
+            },
+        )
     }
 }

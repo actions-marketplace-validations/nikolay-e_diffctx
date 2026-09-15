@@ -480,6 +480,32 @@ where
     E: Fn(&str) -> I,
     I: IntoIterator<Item = String>,
 {
+    discover_by_extracted_path_refs(
+        changed,
+        candidates,
+        repo_root,
+        file_cache,
+        recognises,
+        |_, c| extract(c),
+    )
+}
+
+/// The same shape when the extractor needs the file's path as well as its
+/// text (a CI file's flavour, a Dockerfile against a compose file, a C#
+/// file's own namespace).
+pub fn discover_by_extracted_path_refs<P, E, I>(
+    changed: &[PathBuf],
+    candidates: &[PathBuf],
+    repo_root: Option<&Path>,
+    file_cache: Option<&FxHashMap<PathBuf, String>>,
+    recognises: P,
+    extract: E,
+) -> Vec<PathBuf>
+where
+    P: Fn(&Path) -> bool,
+    E: Fn(&Path, &str) -> I,
+    I: IntoIterator<Item = String>,
+{
     let mine: Vec<&PathBuf> = changed.iter().filter(|f| recognises(f)).collect();
     if mine.is_empty() {
         return vec![];
@@ -487,7 +513,7 @@ where
     let mut refs = FxHashSet::default();
     for f in &mine {
         if let Some(content) = read_file_cached(f, file_cache) {
-            refs.extend(extract(&content));
+            refs.extend(extract(f, &content));
         }
     }
     discover_files_by_refs(&refs, changed, candidates, repo_root)

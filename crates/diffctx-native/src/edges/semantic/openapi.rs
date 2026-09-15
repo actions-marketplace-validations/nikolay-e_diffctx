@@ -9,7 +9,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_openapi_candidate(path: &Path) -> bool {
     let ext = base::file_ext(path);
@@ -127,21 +127,18 @@ impl EdgeBuilder for OpenapiEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let mut refs = FxHashSet::default();
-        for f in changed {
-            if !is_openapi_candidate(f) {
-                continue;
-            }
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                if !is_openapi_file(&content) {
-                    continue;
-                }
-                refs.extend(extract_external_refs(&content));
-            }
-        }
-        if refs.is_empty() {
-            return vec![];
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_openapi_candidate(p),
+            |c| {
+                is_openapi_file(c)
+                    .then(|| extract_external_refs(c))
+                    .into_iter()
+                    .flatten()
+            },
+        )
     }
 }

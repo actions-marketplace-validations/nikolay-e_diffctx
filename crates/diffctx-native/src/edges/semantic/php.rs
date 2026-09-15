@@ -9,7 +9,7 @@ use crate::config::weights::EDGE_WEIGHTS;
 use crate::types::Fragment;
 
 use super::super::EdgeDict;
-use super::super::base::{self, EdgeBuilder, add_edges_from_ids, discover_files_by_refs};
+use super::super::base::{self, EdgeBuilder, add_edges_from_ids};
 
 fn is_php_file(path: &Path) -> bool {
     PHP_EXTENSIONS.contains(base::file_ext(path).as_str())
@@ -139,17 +139,13 @@ impl EdgeBuilder for PhpEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let php_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_php_file(f)).collect();
-        if php_changed.is_empty() {
-            return vec![];
-        }
-        let mut refs = FxHashSet::default();
-        for f in &php_changed {
-            if let Some(content) = base::read_file_cached(f, file_cache) {
-                refs.extend(extract_requires(&content));
-                refs.extend(extract_uses(&content));
-            }
-        }
-        discover_files_by_refs(&refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_php_file(p),
+            |c| extract_requires(c).into_iter().chain(extract_uses(c)),
+        )
     }
 }

@@ -9,8 +9,7 @@ use crate::types::{Fragment, FragmentId};
 
 use super::super::EdgeDict;
 use super::super::base::{
-    self, EdgeBuilder, FragmentIndex, add_edge, add_edges_from_ids, discover_files_by_refs,
-    link_by_name,
+    self, EdgeBuilder, FragmentIndex, add_edge, add_edges_from_ids, link_by_name,
 };
 
 fn is_dart_file(path: &Path) -> bool {
@@ -185,19 +184,13 @@ impl EdgeBuilder for DartEdgeBuilder {
         repo_root: Option<&Path>,
         file_cache: Option<&FxHashMap<PathBuf, String>>,
     ) -> Vec<PathBuf> {
-        let dart_changed: Vec<&PathBuf> = changed.iter().filter(|f| is_dart_file(f)).collect();
-        if dart_changed.is_empty() {
-            return vec![];
-        }
-
-        let mut all_refs = FxHashSet::default();
-        for f in &dart_changed {
-            let content = base::read_file_cached(f, file_cache);
-            if let Some(c) = content {
-                all_refs.extend(extract_refs(&c));
-            }
-        }
-
-        discover_files_by_refs(&all_refs, changed, candidates, repo_root)
+        base::discover_by_extracted_refs(
+            changed,
+            candidates,
+            repo_root,
+            file_cache,
+            |p| is_dart_file(p),
+            extract_refs,
+        )
     }
 }
