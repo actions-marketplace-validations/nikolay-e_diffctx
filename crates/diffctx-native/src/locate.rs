@@ -549,7 +549,7 @@ pub fn build_locate(state: &ScoredState, outcome: &SelectionOutcome) -> LocateOu
         provenance: Some(
             state
                 .provenance
-                .finish(Some(outcome.selection_provenance()), false),
+                .finish(Some(outcome.selection_provenance())),
         ),
     }
 }

@@ -138,14 +138,19 @@ pub struct CoverageReport {
 }
 
 impl CoverageReport {
-    pub fn from_context(ctx: &RunContext) -> Option<Self> {
-        let reasons = ctx.reasons();
+    /// `extra` are the selection's own reasons — per outcome, since one run
+    /// context serves every budget a sweep asks of it. A run that could not
+    /// give every changed file a witness is `degraded`, not merely partial.
+    pub fn from_context(ctx: &RunContext, extra: &[LimitReason]) -> Option<Self> {
+        let mut reasons: BTreeSet<LimitReason> = ctx.reasons().into_iter().collect();
+        reasons.extend(extra.iter().copied());
         if reasons.is_empty() {
             return None;
         }
+        let degraded = reasons.contains(&LimitReason::EvidenceBudgetExceeded);
         Some(Self {
-            status: "partial",
-            limit_reasons: reasons,
+            status: if degraded { "degraded" } else { "partial" },
+            limit_reasons: reasons.into_iter().collect(),
             resources: ctx.usage(),
         })
     }

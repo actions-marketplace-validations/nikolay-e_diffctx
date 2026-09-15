@@ -16,8 +16,8 @@ use crate::types::{Fragment, FragmentId, FragmentKind};
 #[derive(Default)]
 pub struct ChangeSummary {
     pub commit_message: Option<String>,
-    /// Every subject in a multi-commit range, newest first; empty for a
-    /// single commit or a working-tree diff.
+    /// Every commit message of the range (subject and body), newest first;
+    /// empty for a working-tree diff with no committed range.
     pub commit_messages: Vec<String>,
     /// `(display path, class, reason)` for every changed file, the class the
     /// selection policy ranked evidence by.

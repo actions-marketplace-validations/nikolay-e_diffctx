@@ -513,6 +513,11 @@ fn a_bound_resource_yields_a_partial_artifact_that_says_so() {
         reasons.contains(&"edge_contribution_limit".to_string()),
         "reasons: {reasons:?}"
     );
-    assert!(doc["provenance"]["resource_limits"]["max_edge_contributions"] == 1);
+    assert_eq!(
+        doc["provenance"]["effective_config_hash"]
+            .as_str()
+            .map(str::len),
+        Some(16)
+    );
     assert!(!doc["changed_files"].as_array().unwrap().is_empty());
 }

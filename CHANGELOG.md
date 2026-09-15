@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Every changed file gets a witness before any file gets a second one**
+  (#263). Selection now opens with an evidence floor: one representation per
+  changed file — the same fragment the relevance pass would place, its
+  stand-in when that does not fit, a clipped head of the change when nothing
+  does — ordered by change class (hand-written content before mechanical
+  version/tag bumps) and then by path. Relevance and density compete only
+  for what is left. A range of nine one-line image-tag bumps plus four
+  rewritten manifests at `--budget 4000` now keeps all thirteen; before, the
+  four manifests were dropped in favour of the bumps. A file that still gets
+  nothing marks the artifact `coverage.status: degraded` with
+  `evidence_budget_exceeded`.
+- **The rendered document is what `--budget` bounds** (#259). Every
+  renderer — JSON, YAML, Markdown, text, the CLI and the Python `to_*`
+  functions — counts its own output and drops context fragments from the
+  tail (a changed fragment only when no context is left) until it fits,
+  noting `selection_budget_exceeded` in coverage. The engine's envelope
+  estimate still shapes what selection admits, but it no longer decides
+  whether the artifact honours the cap.
 - **The artifact inventories every changed file and says which ones it
   left out** (#263). `changes` carries one row per changed file — its
   `class` (`content`, `unknown`, `mechanical`: one-line version/tag/digest
@@ -17,10 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   YAML, the Python dict, Markdown and text all say it; `locate`'s coverage
   lists `unrepresented_changed_files`. An incomplete context is no longer
   indistinguishable from a complete one on any surface.
-- **A multi-commit range is titled by all of its commits.** `commit_messages`
-  lists every subject in the range, newest first (up to 20); Markdown and
-  text render the list instead of whichever commit happened to be last, and
-  every subject feeds the query expansion, not only the head's.
+- **The artifact carries the commit messages of the range, whole.**
+  `commit_messages` lists every message — subject and body, up to 20
+  commits, 2 000 characters each — newest first; Markdown and text render
+  them instead of the subject of whichever commit happened to be last, and
+  every message feeds the query expansion, not only the head's subject.
+  `commit_message` stays the head's subject for existing readers.
 - **One artifact, `diffctx.context.v1`, on every surface.** JSON and YAML
   output open with `schema: diffctx.context.v1`; the document is generated
   from the engine's type and pinned as `schemas/diffctx.context.v1.json`
@@ -32,9 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   version, the input revisions as object ids, the resolved effective
   configuration (`diffctx.effective_config.v1`: every parameter and every
   `DIFFCTX_*` override that shaped the selection) and its 64-bit hash, the
-  selection parameters actually used (budget, tau, gate), the tokenizer, and
-  the resource limits in force. `locate` output carries the hash alone. Two
-  runs that differ can now say what differed between them.
+  selection parameters actually used (budget, tau, gate). The full record —
+  every parameter, the tokenizer, the resource caps, ~500 tokens — is
+  opt-in with `DIFFCTX_PROVENANCE=full`. Two runs that differ can now say
+  what differed between them.
 - **`DIFFCTX_EVAL_STRICT=1`** refuses to start when the environment carries a
   `DIFFCTX_*` name the effective configuration does not know — an evaluation
   row shaped by an undeclared knob is a number nobody can reproduce.

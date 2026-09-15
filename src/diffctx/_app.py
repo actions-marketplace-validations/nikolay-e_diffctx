@@ -213,7 +213,6 @@ def _build_diff_tree(args: ParsedArgs, prog: str) -> dict[str, Any]:
         args.timeout,
         prog,
     )
-    _warn_empty_diff_result(result, prog, args)
     return result
 
 
@@ -449,10 +448,18 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
         _run_locate_mode(args, prog)
         return
 
-    directory_tree = _build_diff_tree(args, prog) if args.diff_range else _build_standard_tree(args)
-    is_empty_diff_result = bool(args.diff_range) and _diff_result_is_empty(directory_tree)
+    if args.diff_range:
+        from .writer import fit_to_budget
 
-    output_content = tree_to_string(directory_tree, args.output_format)
+        # The rendered document is what `--budget` bounds; the fit may drop
+        # fragments the engine's estimate admitted, and emptiness is judged
+        # on what is actually emitted.
+        directory_tree, output_content = fit_to_budget(_build_diff_tree(args, prog), args.output_format)
+        _warn_empty_diff_result(directory_tree, prog, args)
+    else:
+        directory_tree = _build_standard_tree(args)
+        output_content = tree_to_string(directory_tree, args.output_format)
+    is_empty_diff_result = bool(args.diff_range) and _diff_result_is_empty(directory_tree)
     if not args.quiet:
         print_token_summary(output_content)
         if args.diff_range:

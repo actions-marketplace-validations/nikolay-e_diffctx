@@ -127,6 +127,17 @@ pub fn build_diff_context_in_memory(
     let selection_budget =
         effective_budget.saturating_sub(crate::pipeline::envelope_token_cost(None, &listed));
 
+    let dummy_root = Path::new(".");
+    let mut changed_files: Vec<PathBuf> = changed_paths.iter().map(PathBuf::from).collect();
+    changed_files.sort();
+    let change_classes = crate::pipeline::classify_changes(
+        dummy_root,
+        &changed_files,
+        &hunks,
+        &diff_text,
+        &all_fragments,
+    );
+
     let crate::pipeline::PostpassOutcome {
         mut selected,
         stand_in_ids,
@@ -140,11 +151,11 @@ pub fn build_diff_context_in_memory(
         config.objective,
         selection_budget,
         tau,
+        &crate::pipeline::evidence_priority_of(&changed_files, &change_classes),
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
     let remaining = selection_budget.saturating_sub(used);
-    let changed_files: Vec<PathBuf> = changed_paths.iter().map(PathBuf::from).collect();
     crate::postpass::ensure_changed_files_represented(
         &mut selected,
         &all_fragments,
@@ -158,7 +169,6 @@ pub fn build_diff_context_in_memory(
         &stand_in_ids,
     );
 
-    let dummy_root = Path::new(".");
     let mut changed_list: Vec<String> = changed_paths.iter().cloned().collect();
     changed_list.sort();
     let change = crate::render::ChangeSummary {
@@ -167,13 +177,7 @@ pub fn build_diff_context_in_memory(
         policy_excluded_count: 0,
         commit_message: None,
         commit_messages: Vec::new(),
-        changes: crate::pipeline::classify_changes(
-            dummy_root,
-            &changed_files,
-            &hunks,
-            &diff_text,
-            &all_fragments,
-        ),
+        changes: change_classes,
         changed_files: changed_list,
         deleted_files: Vec::new(),
         renamed_files: Vec::new(),

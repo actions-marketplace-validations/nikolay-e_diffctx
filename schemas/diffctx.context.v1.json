@@ -229,7 +229,7 @@
           "type": "string"
         },
         "effective_config": {
-          "description": "The full record in pack output; the compact locate schema carries the\nhash alone.",
+          "description": "The full record, ~500 tokens, only under `DIFFCTX_PROVENANCE=full`:\nthe hash identifies the configuration on every run, and the record\nis reproducible from the same build and environment.",
           "anyOf": [
             {
               "$ref": "#/$defs/EffectiveConfigV1"
@@ -250,16 +250,22 @@
           ]
         },
         "resource_limits": {
-          "description": "The caps in force, repeated outside `effective_config` so the compact\nlocate record (hash only) still names them.",
-          "$ref": "#/$defs/ResourceBudget"
+          "description": "The caps in force; with the full record only, the hash covers them.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ResourceBudget"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
         "schema",
         "engine",
         "input",
-        "effective_config_hash",
-        "resource_limits"
+        "effective_config_hash"
       ]
     },
     "Engine": {

@@ -11,7 +11,7 @@ from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Any, TextIO
 
-from diffctx._diffctx import get_language_for_file
+from diffctx._diffctx import count_tokens, get_language_for_file
 
 logger = logging.getLogger(__name__)
 
@@ -354,8 +354,9 @@ def _write_text_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
 def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_messages"):
         file.write(f"  commits: {len(tree['commit_messages'])}\n")
-        for subject in tree["commit_messages"]:
-            file.write(f"    {subject}\n")
+        for message in tree["commit_messages"]:
+            for i, line in enumerate(str(message).splitlines()):
+                file.write(f"    {'- ' if i == 0 else '  '}{line}\n")
     elif tree.get("commit_message"):
         file.write(f"  change: {tree['commit_message']}\n")
     if tree.get("changed_files"):
@@ -567,12 +568,19 @@ def _write_md_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
 
 def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_messages"):
-        # A range is titled by all of its commits, newest first — not by the
-        # one that happens to be last (#263).
-        subjects = tree["commit_messages"]
-        file.write(f"> {len(subjects)} commits:\n")
-        for subject in subjects:
-            file.write(f"> - {subject}\n")
+        # A range is titled by all of its commits, subject and body, newest
+        # first — not by the subject of the one that happens to be last (#263).
+        messages = tree["commit_messages"]
+        if len(messages) == 1:
+            for line in str(messages[0]).splitlines():
+                file.write(f"> {line}\n" if line else ">\n")
+        else:
+            file.write(f"> {len(messages)} commits:\n")
+            for message in messages:
+                subject, _, body = str(message).partition("\n")
+                file.write(f"> - **{subject}**\n")
+                for line in body.strip("\n").splitlines():
+                    file.write(f">   {line}\n" if line else ">\n")
         file.write("\n")
     elif tree.get("commit_message"):
         file.write(f"> {tree['commit_message']}\n\n")
@@ -618,17 +626,70 @@ def write_tree_markdown(file: TextIO, tree: dict[str, Any]) -> None:
         _write_md_content(file, tree, name, "")
 
 
-def tree_to_string(tree: dict[str, Any], output_format: str = "yaml") -> str:
+_WRITERS: dict[str, Callable[[TextIO, dict[str, Any]], None]] = {
+    "json": write_tree_json,
+    "txt": write_tree_text,
+    "md": write_tree_markdown,
+    "yaml": write_tree_yaml,
+}
+
+
+def _render(tree: dict[str, Any], output_format: str) -> str:
     buf = io.StringIO()
-    if output_format == "json":
-        write_tree_json(buf, tree)
-    elif output_format == "txt":
-        write_tree_text(buf, tree)
-    elif output_format == "md":
-        write_tree_markdown(buf, tree)
-    else:
-        write_tree_yaml(buf, tree)
+    _WRITERS.get(output_format, write_tree_yaml)(buf, tree)
     return buf.getvalue()
+
+
+def _drop_one_fragment(tree: dict[str, Any]) -> dict[str, Any]:
+    fragments = list(tree["fragments"])
+    # Context goes first, from the tail (lowest relevance); a changed
+    # fragment only once no context is left.
+    index = next(
+        (i for i in range(len(fragments) - 1, -1, -1) if fragments[i].get("role") != "changed"),
+        len(fragments) - 1,
+    )
+    fragments.pop(index)
+    represented = {str(f.get("path")) for f in fragments}
+    trimmed = {**tree, "fragments": fragments, "fragment_count": len(fragments)}
+    if tree.get("changes"):
+        trimmed["changes"] = [{**c, "represented": str(c["path"]) in represented} for c in tree["changes"]]
+    coverage = dict(tree.get("coverage") or {"status": "partial", "limit_reasons": [], "resources": {}})
+    reasons = list(coverage.get("limit_reasons") or [])
+    if "selection_budget_exceeded" not in reasons:
+        reasons.append("selection_budget_exceeded")
+    coverage["limit_reasons"] = reasons
+    if any(not c["represented"] for c in trimmed.get("changes") or []):
+        coverage["status"] = "degraded"
+    trimmed["coverage"] = coverage
+    return trimmed
+
+
+def fit_to_budget(tree: dict[str, Any], output_format: str) -> tuple[dict[str, Any], str]:
+    """The rendered document is what the budget bounds, so the rendering is
+    where the cap is enforced: the engine's envelope charge is an estimate
+    (#259), and anything it under-charges — a coverage note, a format's own
+    scaffolding — would otherwise push the artifact past `--budget`. Context
+    is dropped from the tail first; a changed fragment only when no context
+    is left; the inventory, coverage and provenance never. A tree with no
+    budget in its provenance renders as is."""
+    selection = (tree.get("provenance") or {}).get("selection") or {}
+    budget = selection.get("budget_tokens")
+    if not isinstance(budget, int) or budget <= 0 or budget >= 10_000_000 or not tree.get("fragments"):
+        return tree, _render(tree, output_format)
+
+    # `latency` is telemetry beside the artifact, not part of it: it does not
+    # count against the budget, so the count is taken on the document without
+    # it (a no-op for Markdown and text, which never render it).
+    def accounted(t: dict[str, Any]) -> int:
+        return count_tokens(_render({k: v for k, v in t.items() if k != "latency"}, output_format))
+
+    while accounted(tree) > budget and tree.get("fragments"):
+        tree = _drop_one_fragment(tree)
+    return tree, _render(tree, output_format)
+
+
+def tree_to_string(tree: dict[str, Any], output_format: str = "yaml") -> str:
+    return fit_to_budget(tree, output_format)[1]
 
 
 def _write_to_stdout_with_wrapper(writer: Callable[[TextIO], None]) -> bool:

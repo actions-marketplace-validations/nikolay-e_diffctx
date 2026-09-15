@@ -49,15 +49,23 @@ pub struct ProvenanceV1 {
     pub engine: Engine,
     pub input: Input,
     pub effective_config_hash: String,
-    /// The full record in pack output; the compact locate schema carries the
-    /// hash alone.
+    /// The full record, ~500 tokens, only under `DIFFCTX_PROVENANCE=full`:
+    /// the hash identifies the configuration on every run, and the record
+    /// is reproducible from the same build and environment.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effective_config: Option<EffectiveConfigV1>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selection: Option<Selection>,
-    /// The caps in force, repeated outside `effective_config` so the compact
-    /// locate record (hash only) still names them.
-    pub resource_limits: crate::resource::ResourceBudget,
+    /// The caps in force; with the full record only, the hash covers them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resource_limits: Option<crate::resource::ResourceBudget>,
+}
+
+/// `DIFFCTX_PROVENANCE=full` puts the whole effective configuration and the
+/// resource caps into every artifact. Off by default: the block costs ~500
+/// tokens per artifact, and the hash already says whether two runs differ.
+pub fn full_record_requested() -> bool {
+    std::env::var("DIFFCTX_PROVENANCE").as_deref() == Ok("full")
 }
 
 /// The heavy-phase half: everything known before selection runs. The
@@ -99,7 +107,8 @@ impl RunProvenance {
         }
     }
 
-    pub fn finish(&self, selection: Option<Selection>, include_config: bool) -> ProvenanceV1 {
+    pub fn finish(&self, selection: Option<Selection>) -> ProvenanceV1 {
+        let full = full_record_requested();
         ProvenanceV1 {
             schema: SCHEMA,
             engine: Engine {
@@ -109,9 +118,9 @@ impl RunProvenance {
             },
             input: self.input.clone(),
             effective_config_hash: self.effective_config.hash(),
-            effective_config: include_config.then(|| self.effective_config.clone()),
+            effective_config: full.then(|| self.effective_config.clone()),
             selection,
-            resource_limits: self.effective_config.resources.clone(),
+            resource_limits: full.then(|| self.effective_config.resources.clone()),
         }
     }
 }

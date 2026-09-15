@@ -114,6 +114,6 @@ def test_a_compute_deadline_yields_a_partial_artifact_not_an_exception(tmp_path)
     assert proc.returncode == 0, f"the deadline escaped as an error: {proc.stderr[-400:]}"
     report = json.loads(proc.stdout.strip().splitlines()[-1])
     assert report["coverage"], "the ceiling never fired; the artifact claims to be complete"
-    assert report["coverage"]["status"] == "partial"
+    assert report["coverage"]["status"] in ("partial", "degraded")
     assert "deadline" in report["coverage"]["limit_reasons"]
     assert report["changed"] > 0, "a partial artifact still lists every changed file"

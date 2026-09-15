@@ -12,10 +12,11 @@ Gemini, Llama and friends tokenize differently, typically within
 single-to-low-double-digit percent either way.
 
 `--budget N` therefore means exactly *N o200k_base accounting tokens*, and
-every artifact says so: the `provenance` block of the JSON/YAML output names
-the tokenizer (`effective_config.tokenizer.id`) beside the effective
-configuration hash, so a consumer converting to another model's count knows
-what it is converting from.
+every artifact says so: the `provenance` block of the JSON/YAML output carries
+the effective configuration hash, and `DIFFCTX_PROVENANCE=full` adds the whole
+record — tokenizer id, every parameter, the resource caps — so a consumer
+converting to another model's count knows what it is converting from. The
+full record costs ~500 tokens, which is why it is opt-in.
 
 For a non-OpenAI consumer leave headroom — e.g. `--budget 28000` when aiming
 at a 32k window — or set `DIFFCTX_TOKEN_SAFETY_FACTOR` (a multiplier ≥ 1.0,

@@ -86,10 +86,7 @@ def gitops_repo(tmp_path):
     return repo
 
 
-XFAIL_263 = pytest.mark.xfail(strict=True, reason="#263: selection policy lands with the Tier-0/1/2 coverage floor")
-
-
-@pytest.mark.parametrize("budget", [None, pytest.param(4000, marks=XFAIL_263)])
+@pytest.mark.parametrize("budget", [None, 4000])
 def test_hand_written_manifests_survive_the_bot_bumps(gitops_repo, budget):
     kwargs = {"budget_tokens": budget} if budget is not None else {}
     result = diffctx.build_diff_context(root_dir=gitops_repo.path, diff_range="HEAD~2", **kwargs)
@@ -108,7 +105,11 @@ def test_an_unavoidable_omission_is_disclosed_on_every_structured_surface(gitops
     assert sorted(p for p, c in inventory.items() if not c["represented"]) == omitted
     assert {inventory[p]["class"] for p in BUMP_FILES} == {"mechanical"}
     assert inventory["infra/alerts.yaml"]["class"] == "content"
-    assert json.loads(diffctx.to_json(result))["changes"] == result["changes"]
+    # A rendering may trim further to hold the budget; whatever it emits, its
+    # inventory rows agree with its own fragments.
+    document = json.loads(diffctx.to_json(result))
+    emitted = {f["path"] for f in document["fragments"]}
+    assert all(c["represented"] == (c["path"] in emitted) for c in document["changes"])
     assert "represented: false" in diffctx.to_yaml(result)
     for rendered in (diffctx.to_markdown(result), diffctx.to_text(result)):
         assert "omitted" in rendered

@@ -165,6 +165,7 @@ pub fn build_diff_context_locate(
             budget_requested: budget_tokens,
             tau: tau.unwrap_or(crate::config::limits::DEFAULT_STOPPING_THRESHOLD),
             gated: false,
+            limit_reasons: Vec::new(),
         }
     } else {
         run_selection(&state, budget_tokens, tau)
@@ -469,16 +470,23 @@ fn resolve_change_set(
         });
 
     // `A..B` names both ends; a bare `X` diffs X against the working tree,
-    // whose commits are `X..HEAD`. Only a range of two or more commits gets a
-    // subject list — one commit keeps `commit_message` alone.
+    // whose commits are `X..HEAD`. Every commit of the range travels whole
+    // (subject and body); `commit_message` stays the head's subject.
     let subject_range = match (base_rev.as_deref(), head_rev.as_deref()) {
         (Some(base), Some(head)) => Some((base.to_string(), head.to_string())),
         (None, None) => diff_range.map(|rev| (rev.to_string(), "HEAD".to_string())),
         _ => None,
     };
     let commit_messages = subject_range
-        .map(|(base, head)| git::commit_subjects(root_dir, &base, &head, MAX_COMMIT_SUBJECTS))
-        .filter(|subjects| subjects.len() > 1)
+        .map(|(base, head)| {
+            git::commit_messages(
+                root_dir,
+                &base,
+                &head,
+                MAX_COMMIT_MESSAGES,
+                MAX_COMMIT_MESSAGE_CHARS,
+            )
+        })
         .unwrap_or_default();
 
     let pre_phase_ms = t_entry.elapsed().as_secs_f64() * 1000.0;
@@ -619,7 +627,7 @@ pub fn compute_scored_state(
             .collect();
 
     if std::env::var("DIFFCTX_NO_COMMIT_SIGNAL").as_deref() != Ok("1") {
-        // Every subject in the range, not the last one alone: a bot commit
+        // Every message in the range, not the last one alone: a bot commit
         // on top of a person's work must not be the only query signal (#263).
         let mut signal: Vec<String> = commit_messages.clone();
         if signal.is_empty() {
@@ -759,7 +767,8 @@ pub fn compute_scored_state(
     Ok(state)
 }
 
-const MAX_COMMIT_SUBJECTS: usize = 20;
+const MAX_COMMIT_MESSAGES: usize = 20;
+const MAX_COMMIT_MESSAGE_CHARS: usize = 2_000;
 
 /// The class of every changed file, keyed by its display path. Generated
 /// files are told by their header, which the first fragment of the file
@@ -898,6 +907,22 @@ pub struct SelectionOutcome {
     pub budget_requested: Option<u32>,
     pub tau: f64,
     pub gated: bool,
+    /// What this selection could not honour — per outcome, not per state,
+    /// because one state serves many budgets in a sweep.
+    pub limit_reasons: Vec<crate::resource::LimitReason>,
+}
+
+/// The evidence floor's ordering: the class of every changed file keyed by
+/// the path its fragments carry.
+pub(crate) fn evidence_priority_of(
+    changed_files: &[PathBuf],
+    change_classes: &[(String, crate::change_class::ChangeClass, &'static str)],
+) -> FxHashMap<Arc<str>, u8> {
+    changed_files
+        .iter()
+        .zip(change_classes)
+        .map(|(path, (_, class, _))| (Arc::from(path.to_string_lossy().as_ref()), class.priority()))
+        .collect()
 }
 
 impl SelectionOutcome {
@@ -937,6 +962,7 @@ pub fn select_and_postpass(
     objective: crate::mode::ObjectiveMode,
     effective_budget: u32,
     tau: Option<f64>,
+    evidence_priority: &FxHashMap<Arc<str>, u8>,
 ) -> PostpassOutcome {
     // A scorer with no admission gate (BM25 builds no graph, so it has no
     // declared-related set to gate on) is bounded by the threshold alone, so
@@ -993,6 +1019,7 @@ pub fn select_and_postpass(
                 Some(core_excerpts),
                 scoring_result.admissible_files.as_ref(),
                 scoring_result.declared_admissible_files.as_ref(),
+                Some(evidence_priority),
             )
         }
     };
@@ -1115,11 +1142,12 @@ pub fn run_selection(
 
     let selection_budget = effective_budget.saturating_sub(state.envelope_tokens);
 
+    let evidence_priority = evidence_priority_of(&state.changed_files, &state.change_classes);
     let PostpassOutcome {
         mut selected,
         selection_iters,
         stopping_certificate,
-        stand_in_ids,
+        mut stand_in_ids,
         tau: tau_effective,
         gated,
     } = select_and_postpass(
@@ -1131,6 +1159,7 @@ pub fn run_selection(
         state.config.objective,
         selection_budget,
         tau,
+        &evidence_priority,
     );
 
     let used: u32 = selected.iter().map(|f| f.token_count).sum();
@@ -1164,8 +1193,27 @@ pub fn run_selection(
 
     crate::provenance::maybe_dump(state, &selected);
 
+    // A clipped witness is a stand-in the floor made on the spot; the
+    // renderer learns it carries the change from this set.
+    stand_in_ids.extend(
+        selected
+            .iter()
+            .filter(|f| f.kind == crate::types::FragmentKind::Excerpt)
+            .map(|f| f.id.clone()),
+    );
+    let represented: FxHashSet<&str> = selected.iter().map(|f| f.id.path.as_ref()).collect();
+    let mut limit_reasons = Vec::new();
+    if state
+        .changed_files
+        .iter()
+        .any(|p| !represented.contains(p.to_string_lossy().as_ref()))
+    {
+        limit_reasons.push(crate::resource::LimitReason::EvidenceBudgetExceeded);
+    }
+
     let select_ms = t_start.elapsed().as_secs_f64() * 1000.0;
     SelectionOutcome {
+        limit_reasons,
         selected,
         effective_budget,
         selection_budget,
@@ -1194,6 +1242,7 @@ pub fn select_with_params(
 ) -> DiffContextOutput {
     let outcome = run_selection(state, budget_tokens, tau);
     let selection_provenance = outcome.selection_provenance();
+    let selection_limits = outcome.limit_reasons.clone();
     let stand_in_ids = outcome.stand_in_ids;
     let selected = outcome.selected;
     let selection_iters = outcome.selection_iters;
@@ -1272,8 +1321,8 @@ pub fn select_with_params(
             .map(|&(category, raw, deduped)| (category.as_str(), raw, deduped))
             .collect(),
     });
-    output.provenance = Some(state.provenance.finish(Some(selection_provenance), true));
-    output.coverage = crate::resource::CoverageReport::from_context(&state.run);
+    output.provenance = Some(state.provenance.finish(Some(selection_provenance)));
+    output.coverage = crate::resource::CoverageReport::from_context(&state.run, &selection_limits);
     output
 }
 
@@ -1763,8 +1812,8 @@ pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput 
     output.lockfile_changes = state.lockfile_changes.clone();
     output.ignored_changes = state.ignored_changes.clone();
     output.policy_excluded_count = state.policy_excluded_count;
-    output.provenance = Some(state.provenance.finish(None, true));
-    output.coverage = crate::resource::CoverageReport::from_context(&state.run);
+    output.provenance = Some(state.provenance.finish(None));
+    output.coverage = crate::resource::CoverageReport::from_context(&state.run, &[]);
     output
 }
 

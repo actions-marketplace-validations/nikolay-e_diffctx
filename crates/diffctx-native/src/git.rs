@@ -792,21 +792,36 @@ pub fn show_file_at_revision(repo_root: &Path, rev: &str, rel_path: &Path) -> Re
     run_git(repo_root, &["show", &spec])
 }
 
-/// The subjects of every commit in `base..head`, newest first, at most
-/// `limit`. A multi-commit range used to be titled by whichever commit was
-/// last — on a GitOps branch that is the image updater's, not the person's.
-pub fn commit_subjects(repo_root: &Path, base: &str, head: &str, limit: usize) -> Vec<String> {
+/// Every commit message in `base..head` — subject and body — newest first,
+/// at most `limit` commits, each body cut at `max_chars`. A range used to be
+/// titled by the last commit's subject alone; the body is where a person
+/// says why, and on a GitOps branch the last commit is the image updater's.
+pub fn commit_messages(
+    repo_root: &Path,
+    base: &str,
+    head: &str,
+    limit: usize,
+    max_chars: usize,
+) -> Vec<String> {
     if validate_rev(base).is_err() || validate_rev(head).is_err() {
         return Vec::new();
     }
     let range = format!("{base}..{head}");
     let max = format!("--max-count={limit}");
-    match run_git(repo_root, &["log", "--format=%s", &max, &range, "--"]) {
+    // `%B` is the raw message; `%x1e` (record separator) cannot occur in one.
+    match run_git(repo_root, &["log", "--format=%B%x1e", &max, &range, "--"]) {
         Ok(out) => out
-            .lines()
+            .split('\x1e')
             .map(str::trim)
-            .filter(|l| !l.is_empty())
-            .map(str::to_string)
+            .filter(|m| !m.is_empty())
+            .map(|m| {
+                if m.chars().count() <= max_chars {
+                    m.to_string()
+                } else {
+                    let cut: String = m.chars().take(max_chars).collect();
+                    format!("{}…", cut.trim_end())
+                }
+            })
             .collect(),
         Err(_) => Vec::new(),
     }
