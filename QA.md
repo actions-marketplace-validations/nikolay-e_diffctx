@@ -78,7 +78,17 @@ silently:
 - **`eval` dependency group in `pyproject.toml`, locked in `uv.lock`** — the
   research harness's Python deps. One resolver for the whole repo; the
   separate `requirements-eval.txt` + `.lock` pair (and its own bot) is gone.
-- **`Cargo.toml` + `Cargo.lock`** — Dependabot's `cargo` entry.
+- **`Cargo.toml` + `Cargo.lock`**, GitHub Actions pins, pre-commit revs, Docker
+  digests — Renovate on Forgejo (`renovate.json`, automerge). Dependabot on the
+  mirror keeps only `uv` + `pip`; its `github-actions` and `cargo` entries were
+  removed 2026-09-15 after they opened the same bump twice (#266 vs Forgejo #32).
+  Renovate does NOT detect pep621/uv, so the Python pair stays with Dependabot.
+- **A Renovate automerge never waits for the GitHub CI.** Forgejo carries no
+  pre-commit/pytest run, so a bumped linter can land red on `main`: markdownlint
+  0.49.1 (`3d33c528`, 2026-09-15) tightened MD013 and failed the next two `main`
+  runs on two CHANGELOG lines. A red "Pre-commit hooks" job right after a
+  `chore(deps): update pre-commit hook` merge is that class — fix the files, not
+  the pin.
 
 The pip entry runs `versioning-strategy: increase-if-necessary`. The default
 (`increase`) rewrites a floor to the newest resolvable version every run, and
@@ -252,7 +262,13 @@ dismissing as bot noise.
    the gate alone. Analysis is not part of `diffctx CI` on the GitHub mirror:
    a push to Forgejo `main` runs `sonar-diffctx-*` in `argo-workflows`, whose
    verdict is the Forgejo commit status `argo-ci/sonar`. A fix's issues stay
-   open until that run finishes.
+   open until that run finishes. The sensor (gitops `e3b914da`) went live on
+   2026-09-15 07:44Z, after that day's last diffctx push, so the project did
+   not exist until the first push of the same evening (`ed4cd2f5`) created it:
+   gate OK, 92 issues — 83 `rust:S3776` cognitive complexity (tracked, see the
+   issue filed that pass), 7 `python:S2245` + 1 `python:S2612` re-marked false
+   positive (the marks did not migrate from SonarCloud), `docker:S6471` on
+   `Dockerfile.eval` accepted (operator-run research image).
 6. The stumble ledger is a channel: `[stumble] <task>` issues carry the
    per-batch median and the deduped gripes. A convergent gripe (the same slug
    from independent runs) is the signal — on 2026-08-30 four of six slugs were
