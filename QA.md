@@ -285,6 +285,21 @@ dismissing as bot noise.
 
 ## Traps this repo has already sprung
 
+- **A `-1` at the head of `--budgets` is an option to argparse.** The first
+  full-mode `eval-sweep` run (2026-09-16) died in every cell in seconds with
+  `--budgets: expected one argument`; the cell's `run.log` is in its uploaded
+  artifact (`gh run download <run> -n cell-…`), and the job log needs
+  `gh api --allow-escape-sequences …/jobs/<id>/logs`. The workflow passes
+  `--budgets="${BUDGETS}"` now; anything else that hands a list whose first
+  element can be negative to argparse needs the `=` form.
+- **`grep | head -5` under `shell: bash` (pipefail) fails once the sixth
+  line exists.** The CD sdist gate printed five Rust paths for the log and
+  died on the write error; the 1.16.0 release stopped at "Build sdist" with
+  nothing published. `grep -m5` prints the same lines without a pipe.
+- **Cancelling a running release publishes nothing** — the bump commits reach
+  `github/main` only in the finalize job, so a cancelled `cd.yml` leaves
+  `version.py` on the old version and the same version can be dispatched
+  again.
 - **Two ignore policies, not one.** The *withhold* policy (secret names,
   `.diffctx/ignore`, gitignore, `.git/`) is the security floor everywhere.
   The *noise* policy (`DEFAULT_IGNORE_PATTERNS`: `node_modules/`, `target/`,
