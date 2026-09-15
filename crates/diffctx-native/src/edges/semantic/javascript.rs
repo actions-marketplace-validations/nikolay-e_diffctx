@@ -255,10 +255,7 @@ impl EdgeBuilder for JavaScriptEdgeBuilder {
 
             let mut changed_names: FxHashSet<String> = FxHashSet::default();
             for f in &frontier {
-                let stem = f
-                    .file_stem()
-                    .map(|s| s.to_string_lossy().to_lowercase())
-                    .unwrap_or_default();
+                let stem = base::file_stem_lower(f);
                 changed_names.insert(stem.clone());
                 if stem == "index" {
                     if let Some(parent) = f.parent() {

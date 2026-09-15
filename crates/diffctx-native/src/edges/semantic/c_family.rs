@@ -153,10 +153,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
-            let stem = path
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
+            let stem = base::file_stem_string(path);
 
             push_file_key(&mut header_to_files, name, f);
             if !stem.is_empty() {
@@ -301,10 +298,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
             FxHashMap::default();
         for f in &c_frags {
             let path = Path::new(f.path());
-            let stem = path
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_lowercase())
-                .unwrap_or_default();
+            let stem = base::file_stem_lower(path);
             let dir = path
                 .parent()
                 .map(|d| d.to_string_lossy().to_string())

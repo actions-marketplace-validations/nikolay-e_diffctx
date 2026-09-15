@@ -120,10 +120,7 @@ fn extract_references(content: &str) -> References {
 }
 
 fn stem_to_mod_name(path: &Path) -> String {
-    let stem = path
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_lowercase())
-        .unwrap_or_default();
+    let stem = base::file_stem_lower(path);
     if stem == "mod" || stem == "lib" {
         path.parent()
             .and_then(|p| p.file_name())
@@ -167,10 +164,7 @@ impl EdgeBuilder for RustEdgeBuilder {
 
         for f in &rust_frags {
             let path = Path::new(f.path());
-            let stem = path
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_lowercase())
-                .unwrap_or_default();
+            let stem = base::file_stem_lower(path);
             let is_rep = reps.get(f.path()) == Some(&f.id);
             name_files.entry(stem.clone()).or_default().insert(f.path());
             if is_rep {
@@ -411,10 +405,7 @@ impl EdgeBuilder for RustEdgeBuilder {
             // A crate root or module root shares its directory with the
             // files it declares: a file-level relation between the root's
             // representative and each sibling file's representative.
-            let stem = Path::new(rf.path())
-                .file_stem()
-                .map(|s| s.to_string_lossy().to_lowercase())
-                .unwrap_or_default();
+            let stem = base::file_stem_lower(Path::new(rf.path()));
             if (stem == "lib" || stem == "mod") && reps.get(rf.path()) == Some(&rf.id) {
                 let parent_dir = Path::new(rf.path()).parent();
                 for (other_path, other_rep) in &reps {

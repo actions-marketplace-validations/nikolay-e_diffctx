@@ -559,6 +559,16 @@ pub fn kw(list: &str) -> FxHashSet<&str> {
     list.split_ascii_whitespace().collect()
 }
 
+pub fn file_stem_string(path: &Path) -> String {
+    path.file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_default()
+}
+
+pub fn file_stem_lower(path: &Path) -> String {
+    file_stem_string(path).to_lowercase()
+}
+
 pub fn file_ext(path: &Path) -> String {
     path.extension()
         .map(|e| format!(".{}", e.to_string_lossy().to_lowercase()))
