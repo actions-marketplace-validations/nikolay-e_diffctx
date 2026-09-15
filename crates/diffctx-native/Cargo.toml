@@ -21,9 +21,6 @@ crate-type = ["cdylib", "rlib"]
 name = "diffctx"
 path = "src/main.rs"
 
-[[example]]
-name = "diffctx-test"
-
 [features]
 default = ["lang-core", "lang-extra"]
 python = ["pyo3"]
