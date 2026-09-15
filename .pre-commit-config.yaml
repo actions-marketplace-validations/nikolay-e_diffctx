@@ -278,7 +278,7 @@ repos:
   # MARKDOWN LINTING
   # ============================================================================
   - repo: https://github.com/igorshubovych/markdownlint-cli
-    rev: v0.45.0
+    rev: v0.49.1
     hooks:
       - id: markdownlint
         name: Lint Markdown files
