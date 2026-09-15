@@ -11,7 +11,7 @@ documentation = "https://docs.rs/diffctx"
 readme = "../../README.md"
 keywords = ["git", "diff", "llm", "context", "tree-sitter"]
 categories = ["development-tools", "command-line-utilities"]
-exclude = ["tests/**", "src/test_harness.rs"]
+exclude = ["tests/**", "examples/**"]
 
 [lib]
 name = "_diffctx"
@@ -23,7 +23,6 @@ path = "src/main.rs"
 
 [[example]]
 name = "diffctx-test"
-path = "src/test_harness.rs"
 
 [features]
 default = ["lang-core", "lang-extra"]
