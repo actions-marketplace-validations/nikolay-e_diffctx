@@ -535,8 +535,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   precision, because BM25 gives any generic-token match a small positive score
   and `1/(k + rank)` promotes it to real fused mass. `pit` keeps the position
   instead, via each component's empirical CDF: a fragment in the 5th percentile
-  of a signal contributes 0.05 from it, so two weak opinions cannot manufacture a
-  strong candidate. `score = blend·PIT(ego) + (1-blend)·PIT(bm25) + bonus·[both
+  of a signal contributes 0.05 from it, so two weak opinions cannot manufacture
+  a strong candidate. `score = blend·PIT(ego) + (1-blend)·PIT(bm25) + bonus·[both
   in top-k]`, with `DIFFCTX_PIT_BLEND=0.65`, `DIFFCTX_PIT_AGREEMENT_BONUS=0.10`,
   `DIFFCTX_PIT_AGREEMENT_TOP_K=20`. Measured on the full corpus it recovers 40 of
   those 79 cases (`rrf` 450 below-threshold, `pit` 410) and still trails `ego`
@@ -1249,9 +1249,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   mapping and `--diff` context, since such material is never legitimate LLM
   context: `*.pem`, `*.key`, `*.pfx`, `*.p12`, `*.keystore`, `*.jks`, and SSH
   private keys `id_rsa`/`id_dsa`/`id_ecdsa`/`id_ed25519` (public `.pub` keys stay
-  visible). The `--diff` path previously applied no ignore filtering at all, so a
-  changed key file would have leaked into context. Use `--no-default-ignores` to
-  opt out of tree-mode default ignores. (`.env` files are intentionally still
+  visible). The `--diff` path previously applied no ignore filtering at all, so
+  a changed key file would have leaked into context. Use `--no-default-ignores`
+  to opt out of tree-mode default ignores. (`.env` files are intentionally still
   included — a changed `.env` is legitimate change context; redacting secret
   *values* is a separate planned content-scan feature.)
 
