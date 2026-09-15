@@ -163,6 +163,29 @@ def _write_yaml_path_list(file: TextIO, key: str, paths: list[Any]) -> None:
         file.write(f'  - "{_escape_yaml_string(str(path))}"\n')
 
 
+def _write_yaml_list_item(file: TextIO, item: Any, indent: str) -> None:
+    if not isinstance(item, dict):
+        file.write(f'{indent}  - "{_escape_yaml_string(str(item))}"\n')
+        return
+    first = True
+    for sub_key, sub_value in item.items():
+        prefix = f"{indent}  - " if first else f"{indent}    "
+        first = False
+        buf = io.StringIO()
+        _write_yaml_value(buf, str(sub_key), sub_value, "")
+        file.write(prefix + buf.getvalue().replace("\n", f"\n{indent}    ").rstrip(" ").rstrip("\n") + "\n")
+
+
+def _yaml_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    if value is None:
+        return "null"
+    return f'"{_escape_yaml_string(str(value))}"'
+
+
 def _write_yaml_value(file: TextIO, key: str, value: Any, indent: str) -> None:
     if isinstance(value, dict):
         if not value:
@@ -177,24 +200,9 @@ def _write_yaml_value(file: TextIO, key: str, value: Any, indent: str) -> None:
             return
         file.write(f"{indent}{key}:\n")
         for item in value:
-            if isinstance(item, dict):
-                first = True
-                for sub_key, sub_value in item.items():
-                    prefix = f"{indent}  - " if first else f"{indent}    "
-                    first = False
-                    buf = io.StringIO()
-                    _write_yaml_value(buf, str(sub_key), sub_value, "")
-                    file.write(prefix + buf.getvalue().replace("\n", f"\n{indent}    ").rstrip(" ").rstrip("\n") + "\n")
-            else:
-                file.write(f'{indent}  - "{_escape_yaml_string(str(item))}"\n')
-    elif isinstance(value, bool):
-        file.write(f"{indent}{key}: {'true' if value else 'false'}\n")
-    elif isinstance(value, (int, float)):
-        file.write(f"{indent}{key}: {value}\n")
-    elif value is None:
-        file.write(f"{indent}{key}: null\n")
+            _write_yaml_list_item(file, item, indent)
     else:
-        file.write(f'{indent}{key}: "{_escape_yaml_string(str(value))}"\n')
+        file.write(f"{indent}{key}: {_yaml_scalar(value)}\n")
 
 
 def _write_yaml_change_lists(file: TextIO, tree: dict[str, Any]) -> None:
@@ -354,7 +362,7 @@ def _write_text_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
         file.write(f"    {_escape_text_path(path)}{mark}\n")
 
 
-def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
+def _write_text_commit_messages(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_messages"):
         file.write(f"  commits: {len(tree['commit_messages'])}\n")
         for message in tree["commit_messages"]:
@@ -362,6 +370,10 @@ def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
                 file.write(f"    {'- ' if i == 0 else '  '}{line}\n")
     elif tree.get("commit_message"):
         file.write(f"  change: {tree['commit_message']}\n")
+
+
+def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
+    _write_text_commit_messages(file, tree)
     if tree.get("changed_files"):
         _write_text_changed_files(file, tree)
     if tree.get("deleted_files"):
@@ -569,35 +581,45 @@ def _write_md_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
     file.write("\n")
 
 
+def _write_md_commit_messages(file: TextIO, tree: dict[str, Any]) -> None:
+    # A range is titled by all of its commits, subject and body, newest
+    # first — not by the subject of the one that happens to be last (#263).
+    messages = tree.get("commit_messages")
+    if not messages:
+        if tree.get("commit_message"):
+            file.write(f"> {tree['commit_message']}\n\n")
+        return
+    if len(messages) == 1:
+        for line in str(messages[0]).splitlines():
+            file.write(f"> {line}\n" if line else ">\n")
+    else:
+        file.write(f"> {len(messages)} commits:\n")
+        for message in messages:
+            subject, _, body = str(message).partition("\n")
+            file.write(f"> - **{subject}**\n")
+            for line in body.strip("\n").splitlines():
+                file.write(f">   {line}\n" if line else ">\n")
+    file.write("\n")
+
+
+def _write_md_renamed_files(file: TextIO, tree: dict[str, Any]) -> None:
+    if not tree.get("renamed_files"):
+        return
+    file.write("**Renamed files:**\n\n")
+    for pair in tree["renamed_files"]:
+        old_p = _escape_md_inline_code(str(pair.get("from", "")))
+        new_p = _escape_md_inline_code(str(pair.get("to", "")))
+        file.write(f"- {old_p} \u2192 {new_p}\n")
+    file.write("\n")
+
+
 def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
-    if tree.get("commit_messages"):
-        # A range is titled by all of its commits, subject and body, newest
-        # first — not by the subject of the one that happens to be last (#263).
-        messages = tree["commit_messages"]
-        if len(messages) == 1:
-            for line in str(messages[0]).splitlines():
-                file.write(f"> {line}\n" if line else ">\n")
-        else:
-            file.write(f"> {len(messages)} commits:\n")
-            for message in messages:
-                subject, _, body = str(message).partition("\n")
-                file.write(f"> - **{subject}**\n")
-                for line in body.strip("\n").splitlines():
-                    file.write(f">   {line}\n" if line else ">\n")
-        file.write("\n")
-    elif tree.get("commit_message"):
-        file.write(f"> {tree['commit_message']}\n\n")
+    _write_md_commit_messages(file, tree)
     if note := _coverage_note(tree):
         file.write(f"*{note}*\n\n")
     _write_md_changed_files(file, tree)
     _write_md_path_list(file, tree, "deleted_files", "Deleted files")
-    if tree.get("renamed_files"):
-        file.write("**Renamed files:**\n\n")
-        for pair in tree["renamed_files"]:
-            old_p = _escape_md_inline_code(str(pair.get("from", "")))
-            new_p = _escape_md_inline_code(str(pair.get("to", "")))
-            file.write(f"- {old_p} \u2192 {new_p}\n")
-        file.write("\n")
+    _write_md_renamed_files(file, tree)
     _write_md_path_list(file, tree, "lockfile_changes", "Lock files changed")
     _write_md_path_list(file, tree, "ignored_changes", "Changed but excluded by ignore rules")
     if tree.get("policy_excluded_count"):

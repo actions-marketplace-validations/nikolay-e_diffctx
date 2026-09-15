@@ -49,8 +49,10 @@ def test_the_contribution_cap_is_disclosed_on_every_surface(tmp_path):
     assert "edge_contribution_limit" in coverage["limit_reasons"]
     assert coverage["resources"]["edge_contributions"] >= 1
     assert out["changed"] == ["main.py"], "the change itself is never dropped by a graph cap"
-    assert "Coverage: partial" in out["md"] and "edge_contribution_limit" in out["md"]
-    assert "coverage:" in out["yaml"] and "edge_contribution_limit" in out["yaml"]
+    assert "Coverage: partial" in out["md"]
+    assert "edge_contribution_limit" in out["md"]
+    assert "coverage:" in out["yaml"]
+    assert "edge_contribution_limit" in out["yaml"]
     assert json.loads(out["json"])["coverage"]["limit_reasons"] == coverage["limit_reasons"]
 
 
@@ -58,7 +60,8 @@ def test_the_byte_cap_bounds_discovery_but_never_the_change(tmp_path):
     out = _run(_repo(tmp_path), {"DIFFCTX_MAX_SOURCE_BYTES": "1"})
     assert "total_byte_limit" in out["coverage"]["limit_reasons"]
     assert out["changed"] == ["main.py"]
-    assert "main.py" in out["md"] and "**changed**" in out["md"]
+    assert "main.py" in out["md"]
+    assert "**changed**" in out["md"]
 
 
 def test_the_candidate_cap_is_disclosed(tmp_path):

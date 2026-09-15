@@ -29,7 +29,8 @@ def test_the_artifact_carries_its_provenance_on_every_structured_surface(tmp_pat
     result = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1", budget_tokens=4000)
     prov = result["provenance"]
     assert prov["schema"] == "diffctx.provenance.v1"
-    assert prov["engine"]["name"] == "diffctx" and prov["engine"]["version"]
+    assert prov["engine"]["name"] == "diffctx"
+    assert prov["engine"]["version"]
     assert len(prov["effective_config_hash"]) == 16
     assert "effective_config" not in prov, "the ~500-token record is opt-in; the hash travels always"
     assert prov["selection"]["budget_tokens"] == 4000
@@ -37,10 +38,12 @@ def test_the_artifact_carries_its_provenance_on_every_structured_surface(tmp_pat
     assert prov["selection"]["gate"] == "admission"
     # `git diff HEAD~1` compares a commit with the working tree: one id, no head.
     assert prov["input"]["working_tree"] is True
-    assert len(prov["input"]["base"]) == 40 and "head" not in prov["input"]
+    assert len(prov["input"]["base"]) == 40
+    assert "head" not in prov["input"]
     committed = diffctx.build_diff_context(root_dir=repo.path, diff_range="HEAD~1..HEAD")["provenance"]["input"]
     assert committed["working_tree"] is False
-    assert committed["base"] == prov["input"]["base"] and len(committed["head"]) == 40
+    assert committed["base"] == prov["input"]["base"]
+    assert len(committed["head"]) == 40
     assert committed["head"] != committed["base"]
     full = json.loads(
         _child(
@@ -56,13 +59,16 @@ print(json.dumps(r["provenance"]))
     assert cfg["schema"] == "diffctx.effective_config.v1"
     assert cfg["scoring"] == "ego"
     assert cfg["tokenizer"] == {"id": "o200k_base", "safety_factor": 1.0}
-    assert cfg["profiles"]["scoring"] and cfg["profiles"]["edge_weights"] and cfg["profiles"]["parser"]
+    assert cfg["profiles"]["scoring"]
+    assert cfg["profiles"]["edge_weights"]
+    assert cfg["profiles"]["parser"]
     assert full["resource_limits"]["max_wall_secs"] == 300
     assert full["effective_config_hash"] == prov["effective_config_hash"]
 
     assert json.loads(diffctx.to_json(result))["provenance"]["effective_config_hash"] == prov["effective_config_hash"]
     rendered = diffctx.to_yaml(result)
-    assert "provenance:" in rendered and prov["effective_config_hash"] in rendered
+    assert "provenance:" in rendered
+    assert prov["effective_config_hash"] in rendered
     assert "provenance" not in diffctx.to_markdown(result)
 
 
@@ -88,7 +94,8 @@ print(json.dumps({{"hash": p["effective_config_hash"], "depth": p["effective_con
 """
     base = json.loads(_child({"DIFFCTX_PROVENANCE": "full"}, code).stdout)
     overridden = json.loads(_child({"DIFFCTX_PROVENANCE": "full", "DIFFCTX_OP_GRAPH_DEPTH": "3"}, code).stdout)
-    assert base["depth"] == 2 and overridden["depth"] == 3
+    assert base["depth"] == 2
+    assert overridden["depth"] == 3
     assert base["hash"] != overridden["hash"]
     assert overridden["overrides"] == {"DIFFCTX_OP_GRAPH_DEPTH": "3"}
 
@@ -115,5 +122,6 @@ print(json.dumps({{"count": count_tokens("def helper(x): return x + 1"), "factor
 """
     plain = json.loads(_child({"DIFFCTX_PROVENANCE": "full"}, code).stdout)
     scaled = json.loads(_child({"DIFFCTX_PROVENANCE": "full", "DIFFCTX_TOKEN_SAFETY_FACTOR": "2"}, code).stdout)
-    assert scaled["factor"] == 2.0 and plain["factor"] == 1.0
+    assert scaled["factor"] == 2.0
+    assert plain["factor"] == 1.0
     assert scaled["count"] == 2 * plain["count"]
