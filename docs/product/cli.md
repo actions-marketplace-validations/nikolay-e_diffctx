@@ -3,8 +3,9 @@
 Every flag `diffctx` accepts, with its default and one line of meaning. This
 page is rendered from the parsers themselves by `scripts/update_cli_reference.py`
 (`tests/test_cli_reference.py` fails when it differs from `diffctx --help`), so
-what you read here is what the installed version answers. Worked examples live in the [README](../../README.md#usage); what
-`--budget` counts is in [Token counting](token-budget.md).
+what you read here is what the installed version answers. Worked examples
+live in the [README](../../README.md#usage); what `--budget` counts is in
+[Token counting](token-budget.md).
 
 The native binary (`cargo install diffctx`, `npx diffctx`, the Docker image)
 takes the diff-mode subset of these flags and writes YAML or JSON; `--help`

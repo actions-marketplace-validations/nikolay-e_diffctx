@@ -286,6 +286,10 @@ Apache 2.0
   `--budget` means for non-GPT models
 - [Comparison](COMPARISON.md) — measured results, and when a whole-repo packer
   or a persistent code-graph server fits better
+- [Benchmarks](BENCHMARKS.md) — every published number with what it was
+  measured on, and how to reproduce it
+- [FAQ](docs/product/faq.md) — heuristic or oracle, whose tokens, monorepos,
+  the raw diff, secrets
 - [Paper](https://doi.org/10.5281/zenodo.18824579) — budgeted typed-graph
   retrieval for diff-aware context selection (Zenodo, 2026)
 - [Changelog](CHANGELOG.md)

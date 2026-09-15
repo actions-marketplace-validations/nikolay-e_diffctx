@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A FAQ and a benchmarks page** (#151): `docs/product/faq.md` answers the
+  recurring critiques (heuristic or oracle, the `tree-sitter` extra that no
+  longer exists, whose tokens `--budget` counts, MCP versus a prompt builder,
+  monorepo limits, the raw diff, secrets) and `BENCHMARKS.md` carries every
+  published number with what it was measured on and how to reproduce it.
 - **A command-line reference page** (#240): `docs/product/cli.md` lists every
   flag with its default and meaning, rendered from the parsers by
   `scripts/update_cli_reference.py` and pinned by a test so it cannot drift
