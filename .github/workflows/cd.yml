@@ -318,14 +318,14 @@ jobs:
           args: --out dist
 
       - name: Verify sdist contains Rust sources
-        # No `shell: bash` here means no pipefail, and `| head -5` returned 0
-        # whatever grep found — this gate printed OK on an sdist with zero
-        # Rust files. The listing is for the log; the verdict is grep's alone.
+        # `shell: bash` sets pipefail so the verdict is grep's alone; the
+        # listing is for the log. It used to go through `| head -5`, which
+        # closed the pipe after five lines and made grep fail with a write
+        # error under pipefail — the 1.16.0 release died on its own log line.
         shell: bash
         run: |
           listing=$(tar tzf ./repo/dist/*.tar.gz)
-          echo "${listing}" | grep -E 'crates/diffctx-native/src/.*\.rs$' | head -5
-          echo "${listing}" | grep -qE 'crates/diffctx-native/src/.*\.rs$'
+          echo "${listing}" | grep -m5 -E 'crates/diffctx-native/src/.*\.rs$'
           echo "OK: sdist contains Rust sources"
 
       - name: Upload sdist artifact
