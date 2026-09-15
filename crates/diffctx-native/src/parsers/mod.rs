@@ -40,6 +40,12 @@ pub fn fragment_file(path: Arc<str>, content: &str) -> Vec<Fragment> {
     Vec::new()
 }
 
+pub(crate) fn file_extension_lower(path: &str) -> String {
+    path.rfind('.')
+        .map(|dot| path[dot..].to_ascii_lowercase())
+        .unwrap_or_default()
+}
+
 fn create_snippet(lines: &[&str], start_line: u32, end_line: u32) -> Option<String> {
     if start_line == 0 || end_line == 0 || start_line > end_line {
         return None;
