@@ -87,12 +87,7 @@ impl EdgeBuilder for PhpEdgeBuilder {
         let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
         let mut ns_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for name in extract_defs(&f.content) {
-                name_to_defs
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
             if let Some(ns) = extract_namespace(&f.content) {
                 ns_to_frags.entry(ns).or_default().push(f.id.clone());
             }

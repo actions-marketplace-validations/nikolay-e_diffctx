@@ -95,12 +95,7 @@ impl EdgeBuilder for OpenapiEdgeBuilder {
         let idx = base::FragmentIndex::new(fragments, repo_root);
         let mut schema_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for name in extract_schema_defs(&f.content) {
-                schema_to_frags
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut schema_to_frags, extract_schema_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();

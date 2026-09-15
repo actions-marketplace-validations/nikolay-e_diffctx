@@ -65,18 +65,8 @@ impl EdgeBuilder for ErlangEdgeBuilder {
         let mut mod_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
         let mut fn_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for m in extract_modules(&f.content) {
-                mod_to_frags
-                    .entry(m.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
-            for name in extract_func_defs(&f.content) {
-                fn_to_frags
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut mod_to_frags, extract_modules(&f.content), &f.id);
+            base::index_lower(&mut fn_to_frags, extract_func_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();

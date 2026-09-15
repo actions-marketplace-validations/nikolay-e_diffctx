@@ -108,18 +108,8 @@ impl EdgeBuilder for PerlEdgeBuilder {
         let idx = base::FragmentIndex::new(fragments, repo_root);
         let mut name_to_defs: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for name in extract_packages(&f.content) {
-                name_to_defs
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
-            for name in extract_subs(&f.content) {
-                name_to_defs
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut name_to_defs, extract_packages(&f.content), &f.id);
+            base::index_lower(&mut name_to_defs, extract_subs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();

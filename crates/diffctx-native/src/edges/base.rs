@@ -205,6 +205,21 @@ pub fn frags_where<'a>(
     (!mine.is_empty()).then_some(mine)
 }
 
+/// Register `id` under the lowercase of every name — the definition index
+/// twenty builders build the same way.
+pub fn index_lower(
+    index: &mut FxHashMap<String, Vec<FragmentId>>,
+    names: impl IntoIterator<Item = String>,
+    id: &FragmentId,
+) {
+    for name in names {
+        index
+            .entry(name.to_lowercase())
+            .or_default()
+            .push(id.clone());
+    }
+}
+
 pub fn add_edge(
     edges: &mut EdgeDict,
     src: &FragmentId,

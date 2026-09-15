@@ -73,12 +73,7 @@ impl EdgeBuilder for DbtEdgeBuilder {
         let idx = base::FragmentIndex::new(fragments, repo_root);
         let mut macro_to_frags: FxHashMap<String, Vec<_>> = FxHashMap::default();
         for f in &frags {
-            for name in extract_macro_defs(&f.content) {
-                macro_to_frags
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut macro_to_frags, extract_macro_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();

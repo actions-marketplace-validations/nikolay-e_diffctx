@@ -95,12 +95,7 @@ impl EdgeBuilder for ClojureEdgeBuilder {
                     .or_default()
                     .push(f.id.clone());
             }
-            for name in extract_defs(&f.content) {
-                name_to_defs
-                    .entry(name.to_lowercase())
-                    .or_default()
-                    .push(f.id.clone());
-            }
+            base::index_lower(&mut name_to_defs, extract_defs(&f.content), &f.id);
         }
 
         let mut edges: EdgeDict = FxHashMap::default();
