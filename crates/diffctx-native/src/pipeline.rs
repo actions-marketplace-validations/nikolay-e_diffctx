@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use rayon::prelude::*;
@@ -578,9 +578,6 @@ pub fn compute_scored_state(
     let mode = scoring_mode;
     let mut config = PipelineConfig::from_mode(mode);
     config.ppr_alpha = alpha;
-    if let Ok(s) = std::env::var("DIFFCTX_OBJECTIVE") {
-        config.objective = crate::mode::ObjectiveMode::from_str(&s);
-    }
     let provenance = crate::run_provenance::RunProvenance::new(
         &root_dir,
         diff_range,
@@ -645,53 +642,27 @@ pub fn compute_scored_state(
 
     let t_parse_discovered = Instant::now();
 
-    assign_token_counts(&mut all_fragments);
-
-    let core_ids = identify_core_fragments(&hunks, &all_fragments);
-
-    let mut core_excerpts =
-        crate::excerpt::generate_core_excerpts(&all_fragments, &core_ids, &hunks);
-    assign_excerpt_token_counts(&mut core_excerpts);
-
-    let signature_frags = generate_signature_variants(&all_fragments);
-    let mut sig_frags = signature_frags;
-    assign_token_counts(&mut sig_frags);
-    all_fragments.extend(sig_frags);
-
-    let t_tokenization = Instant::now();
-
-    let seed_weights = compute_seed_weights(&hunks, &core_ids, &all_fragments);
-
     let discovered_path_set: FxHashSet<Arc<str>> = discovered_files
         .iter()
         .map(|p| Arc::from(p.to_string_lossy().as_ref()))
         .collect();
-
-    let strategy = create_scoring_strategy(&config);
-
-    let scoring_result = strategy.score_and_filter(
-        &all_fragments,
-        &core_ids,
+    let ScoredFragments {
+        all_fragments,
+        core_ids,
+        core_excerpts,
+        scoring_result,
+        needs,
+        tokenization_ms,
+    } = score_from_fragments(
+        all_fragments,
         &hunks,
+        &diff_text,
+        &config,
         Some(root_dir.as_path()),
-        Some(&seed_weights),
-        Some(&discovered_path_set),
+        &discovered_path_set,
         &run,
     );
-
-    let mut needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
-    if needs.len() > run.budget().max_needs {
-        // Highest priority first, then a total order, so the cap keeps the
-        // same needs on every machine.
-        needs.sort_by(|a, b| {
-            b.priority
-                .total_cmp(&a.priority)
-                .then_with(|| a.need_type.cmp(&b.need_type))
-                .then_with(|| a.symbol.cmp(&b.symbol))
-        });
-        needs.truncate(run.budget().max_needs);
-        run.note(crate::resource::LimitReason::NeedLimit);
-    }
+    let t_tokenization = t_parse_discovered + Duration::from_secs_f64(tokenization_ms / 1000.0);
 
     let t_done = Instant::now();
     batch_reader.close();
@@ -748,6 +719,84 @@ pub fn compute_scored_state(
     };
     state.envelope_tokens = envelope_tokens_of(&state);
     Ok(state)
+}
+
+/// The heavy phase from fragments onward: token counts, cores and their
+/// stand-ins, signature variants, seed weights, scoring, information needs.
+pub struct ScoredFragments {
+    pub all_fragments: Vec<Fragment>,
+    pub core_ids: FxHashSet<FragmentId>,
+    pub core_excerpts: FxHashMap<FragmentId, Fragment>,
+    pub scoring_result: ScoringResult,
+    pub needs: Vec<InformationNeed>,
+    pub tokenization_ms: f64,
+}
+
+/// One heavy phase for every caller. The product pipeline arrives here from
+/// git and discovery; the corpus harness from an in-memory repository. Both
+/// used to spell these steps out separately, which is how the harness once
+/// measured a system nobody runs (#149) and why the fork survived a first
+/// consolidation of the selection half (#232). `repo_root` is `None` for the
+/// harness — the strategies that need a filesystem do without one there.
+pub fn score_from_fragments(
+    mut all_fragments: Vec<Fragment>,
+    hunks: &[crate::types::DiffHunk],
+    diff_text: &str,
+    config: &PipelineConfig,
+    repo_root: Option<&Path>,
+    discovered_paths: &FxHashSet<Arc<str>>,
+    run: &crate::resource::RunContext,
+) -> ScoredFragments {
+    let t0 = Instant::now();
+    assign_token_counts(&mut all_fragments);
+
+    let core_ids = identify_core_fragments(hunks, &all_fragments);
+
+    let mut core_excerpts =
+        crate::excerpt::generate_core_excerpts(&all_fragments, &core_ids, hunks);
+    assign_excerpt_token_counts(&mut core_excerpts);
+
+    let mut sig_frags = generate_signature_variants(&all_fragments);
+    assign_token_counts(&mut sig_frags);
+    all_fragments.extend(sig_frags);
+
+    let tokenization_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+    let seed_weights = compute_seed_weights(hunks, &core_ids, &all_fragments);
+
+    let strategy = create_scoring_strategy(config);
+    let scoring_result = strategy.score_and_filter(
+        &all_fragments,
+        &core_ids,
+        hunks,
+        repo_root,
+        Some(&seed_weights),
+        Some(discovered_paths),
+        run,
+    );
+
+    let mut needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, diff_text);
+    if needs.len() > run.budget().max_needs {
+        // Highest priority first, then a total order, so the cap keeps the
+        // same needs on every machine.
+        needs.sort_by(|a, b| {
+            b.priority
+                .total_cmp(&a.priority)
+                .then_with(|| a.need_type.cmp(&b.need_type))
+                .then_with(|| a.symbol.cmp(&b.symbol))
+        });
+        needs.truncate(run.budget().max_needs);
+        run.note(crate::resource::LimitReason::NeedLimit);
+    }
+
+    ScoredFragments {
+        all_fragments,
+        core_ids,
+        core_excerpts,
+        scoring_result,
+        needs,
+        tokenization_ms,
+    }
 }
 
 pub struct SelectionOutcome {

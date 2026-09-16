@@ -289,6 +289,19 @@ pub fn poll_current(i: usize, every: usize, produced: u64) -> bool {
         .unwrap_or(true)
 }
 
+/// `poll_current` for a loop that accumulates into one map: `emitted` is the
+/// map's size so far, `reported` what the last poll already charged. Updated
+/// only on the poll cadence — advancing it every iteration charged one
+/// fragment's worth per poll and a 38M-edge builder never tripped the cap.
+pub fn poll_emissions(i: usize, every: usize, emitted: u64, reported: &mut u64) -> bool {
+    if i % every != 0 {
+        return true;
+    }
+    let produced = emitted.saturating_sub(*reported);
+    *reported = emitted;
+    poll_current(i, every, produced)
+}
+
 /// The deadline half alone, for loops that emit nothing (diffusion pushes).
 pub fn poll_current_every(i: usize, every: usize) -> bool {
     poll_current(i, every, 0)
@@ -364,6 +377,21 @@ mod tests {
         assert!(!poll_current(0, 1, 11));
         assert!(poll_current(1, 2, 1_000_000), "off-cycle polls never check");
         drop(g2);
+        let capped = RunContext::new(budget(1000, 10));
+        let g3 = capped.enter();
+        let mut reported = 0;
+        assert!(poll_emissions(0, 4, 3, &mut reported));
+        assert!(
+            poll_emissions(1, 4, 8, &mut reported),
+            "off-cycle: nothing charged"
+        );
+        assert_eq!(reported, 3);
+        assert!(
+            !poll_emissions(4, 4, 12, &mut reported),
+            "12 emitted > cap 10"
+        );
+        assert_eq!(capped.usage().edge_contributions, 12);
+        drop(g3);
         drop(guard);
         // Nothing published: must never stop.
         assert!(poll_current(0, 1, u64::MAX));

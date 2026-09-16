@@ -323,10 +323,9 @@ impl EdgeBuilder for ConfigToCodeEdgeBuilder {
         let mut edges: EdgeDict = FxHashMap::default();
         let mut reported = 0u64;
         for (i, code_frag) in code_frags.iter().enumerate() {
-            if !crate::resource::poll_current(i, 64, edges.len() as u64 - reported) {
+            if !crate::resource::poll_emissions(i, 64, edges.len() as u64, &mut reported) {
                 break;
             }
-            reported = edges.len() as u64;
             let content = code_frag.content.as_ref();
             let mut matched_cfgs: FxHashSet<usize> = FxHashSet::default();
             if let Some(ac) = &automaton {

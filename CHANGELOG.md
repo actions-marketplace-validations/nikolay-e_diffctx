@@ -272,6 +272,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **One heavy phase for the product and the corpus harness.** From the
+  fragments onward — token counts, cores and their stand-ins, signature
+  variants, seed weights, scoring, information needs — both paths call
+  `pipeline::score_from_fragments`; the harness's own spelling of those
+  steps is gone, and the `DIFFCTX_OBJECTIVE` override, which only the
+  product used to see, is resolved with the mode for every caller (#232).
 - **The compute deadline is no longer a panic, and never an exception.**
   `ComputeTimeoutError` stays importable but the engine does not raise it;
   a git subprocess that overruns its share of the timeout is still a

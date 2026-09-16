@@ -7,13 +7,10 @@ use similar::{ChangeTag, TextDiff};
 
 use crate::config::budget::BUDGET;
 use crate::config::tokenization::TOKENIZATION;
-use crate::core::{compute_seed_weights, identify_core_fragments};
 use crate::edges;
 use crate::mode::{PipelineConfig, ScoringMode};
 use crate::parsers::fragment_file;
 use crate::render::{DiffContextOutput, build_diff_context_output};
-use crate::scoring::create_scoring_strategy;
-use crate::signatures::generate_signature_variants;
 use crate::types::{DiffHunk, Fragment, FragmentId};
 
 pub struct MemoryRepo {
@@ -80,49 +77,34 @@ pub fn build_diff_context_in_memory(
         }
     }
 
-    crate::pipeline::assign_token_counts(&mut all_fragments);
-
-    let core_ids = identify_core_fragments(&hunks, &all_fragments);
-
-    // The same two inputs the shipped pipeline gives the selector. Passing
-    // `None` for both made this harness score a different system: no
-    // excerpt-downshift (#149), so an oversized core was skipped rather than
-    // narrowed, and no I(f) prior, so per-file importance did not shape
-    // admission. Iterating on either of those against this harness measured
-    // something nobody runs.
-    let mut core_excerpts =
-        crate::excerpt::generate_core_excerpts(&all_fragments, &core_ids, &hunks);
-    crate::pipeline::assign_excerpt_token_counts(&mut core_excerpts);
-
-    let mut sig_frags = generate_signature_variants(&all_fragments);
-    crate::pipeline::assign_token_counts(&mut sig_frags);
-    all_fragments.extend(sig_frags);
-
     let effective_budget = budget_tokens.unwrap_or(BUDGET.unlimited);
     let mut config = PipelineConfig::from_mode(scoring_mode);
     config.ppr_alpha = alpha;
-    let seed_weights = compute_seed_weights(&hunks, &core_ids, &all_fragments);
 
     let discovered_arc: FxHashSet<Arc<str>> = discovered_paths
         .iter()
         .map(|s| Arc::from(s.as_str()))
         .collect();
 
-    let strategy = create_scoring_strategy(&config);
-
-    let scoring_result = strategy.score_and_filter(
-        &all_fragments,
-        &core_ids,
+    // The corpus harness has no timeout contract; before #210 it inherited
+    // whatever ceiling the last in-process run left behind.
+    let run = crate::resource::RunContext::unbounded();
+    let crate::pipeline::ScoredFragments {
+        all_fragments,
+        core_ids,
+        core_excerpts,
+        scoring_result,
+        needs,
+        ..
+    } = crate::pipeline::score_from_fragments(
+        all_fragments,
         &hunks,
+        &diff_text,
+        &config,
         None,
-        Some(&seed_weights),
-        Some(&discovered_arc),
-        // The corpus harness has no timeout contract; before #210 it
-        // inherited whatever ceiling the last in-process run left behind.
-        &crate::resource::RunContext::unbounded(),
+        &discovered_arc,
+        &run,
     );
-
-    let needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
 
     // The same envelope charge the product pipeline applies (#241): a harness
     // that spends the budget differently scores a system nobody runs (#149).

@@ -6,6 +6,7 @@
 
 // Input: git plumbing and path handling.
 pub mod git;
+pub mod in_memory_harness;
 mod paths;
 
 // Change set: what the diff touched, cut into fragments.
@@ -45,7 +46,6 @@ pub mod render;
 // Orchestration and shared configuration.
 pub mod config;
 pub mod effective_config;
-pub mod memory_pipeline;
 pub mod mode;
 pub(crate) mod peak_rss;
 pub mod pipeline;

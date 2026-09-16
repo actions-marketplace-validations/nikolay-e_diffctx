@@ -149,10 +149,9 @@ impl EdgeBuilder for PythonEdgeBuilder {
             // the 8-file cap (#196); the between-builders check cannot
             // interrupt a single builder, so poll inside the loop — for the
             // deadline and for the contribution cap alike.
-            if !crate::resource::poll_current(i, 256, edges.len() as u64 - reported) {
+            if !crate::resource::poll_emissions(i, 256, edges.len() as u64, &mut reported) {
                 break;
             }
-            reported = edges.len() as u64;
             let self_defs = frag_defines.get(&f.id).cloned().unwrap_or_default();
             let src_imports = frag_imports.get(&f.id).cloned().unwrap_or_default();
 

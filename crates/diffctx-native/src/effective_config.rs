@@ -19,7 +19,6 @@ use crate::config::limits::{PPR, UTILITY};
 use crate::config::needs::NEEDS;
 use crate::config::scoring::{EGO, PIT, RRF};
 use crate::mode::{ObjectiveMode, PipelineConfig, ScoringMode};
-use crate::resource::ResourceBudget;
 use crate::tokenizer::{TokenCounter, TokenizerId};
 
 pub const SCHEMA: &str = "diffctx.effective_config.v1";
