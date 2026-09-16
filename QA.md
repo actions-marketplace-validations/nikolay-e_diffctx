@@ -306,6 +306,10 @@ dismissing as bot noise.
   `git fetch github --tags && git push origin vX.Y.Z`; if the tag is already
   gone, recreate it on the "Release version X.Y.Z" commit, push to Forgejo
   first, then GitHub, then `gh release edit vX.Y.Z --draft=false`.
+- **A dependency PR merged right after a release fails `uv sync --locked`.**
+  Its `uv.lock` still names the pre-release project version; the bump
+  changed `pyproject.toml` underneath it. `uv lock` (one-line diff) and
+  commit; merge dependency PRs before dispatching a release, not after.
 - **Cancelling a running release publishes nothing** — the bump commits reach
   `github/main` only in the finalize job, so a cancelled `cd.yml` leaves
   `version.py` on the old version and the same version can be dispatched
