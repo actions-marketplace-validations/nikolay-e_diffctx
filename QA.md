@@ -178,6 +178,13 @@ dismissing as bot noise.
   (`ls -la ~/.local/share/uv/tools/diffctx/lib/python*/site-packages/diffctx/_diffctx.abi3.so`).
   To review a range that includes unreleased work, install from source:
   `uv tool install . --force --reinstall`.
+- **A source install sticks.** The tool's receipt
+  (`~/.local/share/uv/tools/diffctx/uv-receipt.toml`) remembers the local
+  checkout, and a later `uv tool upgrade diffctx` rebuilds from it — the
+  "released" reviewer silently becomes a dev build (observed 2026-09-17:
+  `+ diffctx==1.16.0 (from file://…)`). Go back to the published wheel with
+  `uv tool install --force --reinstall --no-sources 'diffctx[mcp]==X.Y.Z'`
+  and confirm the receipt shows `no-sources = true`.
 - **Do not review with `--budget -1`.** Selection plus the post-passes are
   ~97% of wall clock on a wide range (#121); unlimited removes the stop and
   every cell hits the 300s deadline. A wide range at the default budget is
@@ -314,6 +321,13 @@ dismissing as bot noise.
   `github/main` only in the finalize job, so a cancelled `cd.yml` leaves
   `version.py` on the old version and the same version can be dispatched
   again.
+- **The landing page scrolled sideways on a phone for months.** At 390 px the
+  nav links and the single-column lab grid (`1fr` resolves to min-content)
+  pushed the document to ~595 px wide; nothing checked it. Browser QA of the
+  page includes one mobile-width probe:
+  `document.documentElement.scrollWidth <= innerWidth` at 390 px, plus a list
+  of elements whose right edge passes the viewport outside an
+  `overflow: auto` box.
 - **Two ignore policies, not one.** The *withhold* policy (secret names,
   `.diffctx/ignore`, gitignore, `.git/`) is the security floor everywhere.
   The *noise* policy (`DEFAULT_IGNORE_PATTERNS`: `node_modules/`, `target/`,
