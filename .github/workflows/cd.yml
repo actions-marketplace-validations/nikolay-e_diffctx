@@ -468,8 +468,8 @@ jobs:
 
       - name: Validate distributions
         run: |
-          python -m pip install --upgrade pip
-          pip install twine
+          python -m pip install --only-binary :all: --upgrade pip
+          python -m pip install --only-binary :all: twine
           twine check dist/*
 
       - name: Publish to PyPI (OIDC trusted publishing)
@@ -508,10 +508,12 @@ jobs:
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --only-binary :all: --upgrade pip
           # Poll PyPI until the new version is installable. Up to 5 minutes.
+          # Wheels only: the smoke tests the published wheel, and an sdist
+          # fallback would build from source and run its setup scripts.
           for attempt in 1 2 3 4 5 6 7 8 9 10; do
-            if python -m pip install "diffctx==${VERSION}"; then
+            if python -m pip install --only-binary :all: "diffctx==${VERSION}"; then
               echo "Installed diffctx ${VERSION} on attempt $attempt"
               break
             fi
@@ -568,7 +570,7 @@ jobs:
         env:
           VERSION: ${{ needs.prepare-version.outputs.version }}
         run: |
-          python -m pip install "diffctx[mcp]==${VERSION}"
+          python -m pip install --only-binary :all: "diffctx[mcp]==${VERSION}"
           command -v diffctx-mcp
           python - <<'PY'
           import json, os, subprocess, sys

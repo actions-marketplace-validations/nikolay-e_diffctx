@@ -368,7 +368,7 @@ jobs:
           SCORING: ${{ steps.cfg.outputs.scoring }}
 
       - name: Install uv (required by aider baseline)
-        run: pip install uv
+        run: 'pip install --only-binary :all: uv'
 
       - name: Run cell (smoke — 5 instances)
         timeout-minutes: 50
@@ -782,7 +782,7 @@ jobs:
           SCORING: ${{ steps.cfg.outputs.scoring }}
 
       - name: Install uv (required by aider baseline; safe no-op for others)
-        run: pip install --no-cache-dir uv
+        run: 'pip install --only-binary :all: --no-cache-dir uv'
 
       # Resume across "Re-run failed jobs": artifacts persist across attempts
       # of the same run, so a retried cell restores its previous attempt's
@@ -939,7 +939,7 @@ jobs:
           python-version: '3.12'
 
       - name: Install deps
-        run: pip install numpy scipy
+        run: 'pip install --only-binary :all: numpy scipy'
 
       - name: Download all cell artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
