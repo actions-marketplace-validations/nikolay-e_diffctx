@@ -166,7 +166,7 @@ fn collect_capped_edges_from(
             let _in_builder = ctx.enter();
             let t = std::time::Instant::now();
             let edges = builder.build(fragments, repo_root);
-            ctx.add_contributions(edges.len() as u64);
+            ctx.charge_remaining(edges.len() as u64);
             if std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some() {
                 // The index is the registration order within
                 // builder_categories(); category names alone cannot tell two

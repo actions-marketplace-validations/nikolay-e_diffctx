@@ -252,12 +252,25 @@ impl RunContext {
     /// publishes its own copy, so concurrent runs never see each other's.
     pub fn enter(&self) -> ScopedContext {
         let prev = CURRENT.with(|c| c.replace(Some(self.clone())));
+        SELF_REPORTED.with(|r| r.set(0));
         ScopedContext { prev }
+    }
+
+    /// Charges a finished builder's total minus what its own loops already
+    /// reported on this thread.
+    pub fn charge_remaining(&self, total: u64) -> bool {
+        let already = SELF_REPORTED.with(|r| r.replace(0));
+        let remaining = total.saturating_sub(already);
+        remaining == 0 || self.add_contributions(remaining)
     }
 }
 
 thread_local! {
     static CURRENT: RefCell<Option<RunContext>> = const { RefCell::new(None) };
+    /// What the loops of the builder running on this thread have already
+    /// charged through `poll_emissions`, so the orchestrator charges only the
+    /// remainder when the builder returns — never the same edge twice.
+    static SELF_REPORTED: std::cell::Cell<u64> = const { std::cell::Cell::new(0) };
 }
 
 pub struct ScopedContext {
@@ -299,6 +312,7 @@ pub fn poll_emissions(i: usize, every: usize, emitted: u64, reported: &mut u64) 
     }
     let produced = emitted.saturating_sub(*reported);
     *reported = emitted;
+    SELF_REPORTED.with(|r| r.set(r.get() + produced));
     poll_current(i, every, produced)
 }
 
@@ -391,6 +405,12 @@ mod tests {
             "12 emitted > cap 10"
         );
         assert_eq!(capped.usage().edge_contributions, 12);
+        assert!(!capped.charge_remaining(15), "3 more, still over the cap");
+        assert_eq!(
+            capped.usage().edge_contributions,
+            15,
+            "self-reported emissions charged once"
+        );
         drop(g3);
         drop(guard);
         // Nothing published: must never stop.
