@@ -24,6 +24,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   count for consumers whose model tokenizes denser than `o200k_base`;
   `--budget N` stays "N o200k_base accounting tokens" and the factor is in
   provenance. No model-specific default is shipped.
+- **A run that hits a limit says so instead of failing.** `--timeout` is
+  cooperative now: the phase it interrupts stops at its next bounded unit (a
+  file, an edge builder, a diffusion batch) and the run renders what it has,
+  with a `coverage` block — `status: partial`, `limit_reasons`, and the
+  resources consumed — on JSON, YAML, Markdown, text, the Python dict and
+  `locate`'s coverage. The same vocabulary covers the new memory caps:
+  `DIFFCTX_MAX_EDGE_CONTRIBUTIONS` (20M, counted before deduplication — the
+  number that owned 11 GB on a 10k-module monorepo, #196),
+  `DIFFCTX_MAX_SOURCE_BYTES` (256 MB of parsed source, never the changed
+  files themselves), `DIFFCTX_MAX_CANDIDATE_FILES` (200k) and
+  `DIFFCTX_MAX_NEEDS` (4k: every candidate is scored against every
+  information need mined from the diff, and a repository-sized diff produced
+  a need set that made selection take 413 s on this repository's own
+  history — 6 s under the cap). The caps are part of the effective
+  configuration and its hash.
 
 ### Security
 
@@ -256,6 +271,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `IntervalIndex` instead of a fourth hand-written check.
 
 ### Changed
+
+- **The compute deadline is no longer a panic, and never an exception.**
+  `ComputeTimeoutError` stays importable but the engine does not raise it;
+  a git subprocess that overruns its share of the timeout is still a
+  `GitError`. The native CLI exits 0 with a partial artifact at the deadline;
+  124 is reserved for the watchdog that fires 30 s later when a phase could
+  not stop. `--timeout 0` is therefore a git failure (exit 3), not an abort.
 
 - **The hero comparison names both baselines.** It measured whole changed
   files pasted (17.6×) while the headline invites comparison with a raw

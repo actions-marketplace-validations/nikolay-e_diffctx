@@ -46,7 +46,7 @@ def test_the_artifact_carries_its_provenance_on_every_structured_surface(tmp_pat
     assert committed["working_tree"] is False
     assert committed["base"] == prov["input"]["base"] and len(committed["head"]) == 40
     assert committed["head"] != committed["base"]
-    assert prov["resource_limits"]["timeout_secs"] == 300
+    assert prov["resource_limits"]["max_wall_secs"] == 300
 
     assert json.loads(diffctx.to_json(result))["provenance"]["effective_config_hash"] == prov["effective_config_hash"]
     rendered = diffctx.to_yaml(result)

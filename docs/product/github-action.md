@@ -107,4 +107,5 @@ comment and nothing else.
 - Requires no token and no secret. Grant only `contents: read` unless a
   downstream step needs more.
 - Exit codes other than `0` and `4` are propagated verbatim, so a missing
-  revision (`3`) or a timeout (`124`) fails the step loudly.
+  revision (`3`) or a hung run (`124`) fails the step loudly; a run that
+  merely reaches `--timeout` emits a partial context and says so in it.

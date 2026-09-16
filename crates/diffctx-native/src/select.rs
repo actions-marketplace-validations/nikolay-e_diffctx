@@ -376,7 +376,12 @@ fn build_initial_heap(
     id_to_frag: &mut FxHashMap<FragmentId, Fragment>,
 ) -> BinaryHeap<HeapEntry> {
     let mut heap = BinaryHeap::new();
-    for frag in candidates {
+    for (i, frag) in candidates.iter().enumerate() {
+        // Past the deadline the candidates not yet scored stay out: the
+        // cores are already placed, and a partial context beats no artifact.
+        if !crate::resource::poll_current_every(i, 64) {
+            break;
+        }
         if frag.token_count > 0 {
             let density = compute_density(
                 frag,
@@ -579,6 +584,9 @@ fn run_greedy_loop_heap(
     loop {
         while !heap.is_empty() && state.remaining_budget > 0 {
             loop_iters += 1;
+            if !crate::resource::poll_current_every(loop_iters, 16) {
+                break;
+            }
             let (best_frag, best_density, new_version) = find_best_candidate_heap(
                 heap,
                 current_version,

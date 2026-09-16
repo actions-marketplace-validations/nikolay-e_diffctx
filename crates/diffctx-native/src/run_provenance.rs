@@ -43,15 +43,6 @@ pub struct Selection {
 }
 
 #[derive(Serialize, Clone, Debug)]
-pub struct ResourceLimits {
-    pub timeout_secs: u64,
-    pub max_file_bytes: usize,
-    pub max_changed_file_bytes: usize,
-    pub max_fragments_per_file: usize,
-    pub max_out_edges_per_node: usize,
-}
-
-#[derive(Serialize, Clone, Debug)]
 pub struct ProvenanceV1 {
     pub schema: &'static str,
     pub engine: Engine,
@@ -63,7 +54,9 @@ pub struct ProvenanceV1 {
     pub effective_config: Option<EffectiveConfigV1>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selection: Option<Selection>,
-    pub resource_limits: ResourceLimits,
+    /// The caps in force, repeated outside `effective_config` so the compact
+    /// locate record (hash only) still names them.
+    pub resource_limits: crate::resource::ResourceBudget,
 }
 
 /// The heavy-phase half: everything known before selection runs. The
@@ -72,7 +65,6 @@ pub struct ProvenanceV1 {
 pub struct RunProvenance {
     pub input: Input,
     pub effective_config: EffectiveConfigV1,
-    pub timeout_secs: u64,
 }
 
 impl RunProvenance {
@@ -80,7 +72,6 @@ impl RunProvenance {
         root_dir: &Path,
         diff_range: Option<&str>,
         effective_config: EffectiveConfigV1,
-        timeout_secs: u64,
     ) -> Self {
         let (base_rev, head_rev) = diff_range
             .map(crate::git::split_diff_range)
@@ -104,12 +95,10 @@ impl RunProvenance {
                 working_tree,
             },
             effective_config,
-            timeout_secs,
         }
     }
 
     pub fn finish(&self, selection: Option<Selection>, include_config: bool) -> ProvenanceV1 {
-        let limits = &*crate::config::limits::LIMITS;
         ProvenanceV1 {
             schema: SCHEMA,
             engine: Engine {
@@ -121,13 +110,7 @@ impl RunProvenance {
             effective_config_hash: self.effective_config.hash(),
             effective_config: include_config.then(|| self.effective_config.clone()),
             selection,
-            resource_limits: ResourceLimits {
-                timeout_secs: self.timeout_secs,
-                max_file_bytes: limits.max_file_size,
-                max_changed_file_bytes: limits.max_changed_file_size,
-                max_fragments_per_file: limits.max_fragments,
-                max_out_edges_per_node: self.effective_config.max_out_edges_per_node,
-            },
+            resource_limits: self.effective_config.resources.clone(),
         }
     }
 }

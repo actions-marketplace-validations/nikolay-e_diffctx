@@ -201,11 +201,15 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
 
         let mut edges: EdgeDict = FxHashMap::default();
 
+        let mut reported = 0u64;
         for (i, f) in c_frags.iter().enumerate() {
             // The envoy shape (520 files sharing one stem) made a single
             // c_family build outrun the whole timeout; the between-builders
             // check cannot interrupt it, so poll inside the loop (#210).
-            crate::deadline::check_current_every(i, 256, "edge construction (c_family)");
+            if !crate::resource::poll_current(i, 256, edges.len() as u64 - reported) {
+                break;
+            }
+            reported = edges.len() as u64;
             for inc in extract_includes(&f.content) {
                 let inc_name = if inc.contains('/') {
                     inc.split('/').next_back().unwrap().to_string()
@@ -324,7 +328,7 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
         // not buckets; a per-bucket poll never fired inside the case it was
         // added for (#210).
         let mut pairs = 0usize;
-        for (_key, (files, _)) in by_stem.iter() {
+        'buckets: for (_key, (files, _)) in by_stem.iter() {
             if files.len() < 2 {
                 continue;
             }
@@ -338,11 +342,10 @@ impl EdgeBuilder for CFamilyEdgeBuilder {
                 .collect();
             for h in &headers {
                 for imp in &impls {
-                    crate::deadline::check_current_every(
-                        pairs,
-                        4096,
-                        "edge construction (c_family pairing)",
-                    );
+                    if !crate::resource::poll_current(pairs, 4096, edges.len() as u64 - reported) {
+                        break 'buckets;
+                    }
+                    reported = edges.len() as u64;
                     pairs += 1;
                     if let (Some(hr), Some(ir)) = (reps.get(**h), reps.get(**imp)) {
                         add_edge(&mut edges, hr, ir, base_weight, reverse_factor);

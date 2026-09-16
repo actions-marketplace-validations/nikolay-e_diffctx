@@ -74,6 +74,9 @@ pub struct ScoredState {
     /// Everything a reader needs to reproduce this state: the resolved
     /// configuration and its hash, the input revisions, the limits in force.
     pub provenance: crate::run_provenance::RunProvenance,
+    /// The deadline, the resource caps and the log of what limited the run —
+    /// read by every renderer for the coverage block.
+    pub run: crate::resource::RunContext,
     /// The change summary's token cost (#241), computed once here: it depends
     /// on nothing a sweep cell changes, and `select_with_params` re-runs
     /// selection per (tau, cbf) cell against this one state.
@@ -486,7 +489,8 @@ pub fn compute_scored_state(
     let t_entry = Instant::now();
     crate::effective_config::enforce_strict_env()?;
     git::set_git_timeout(timeout);
-    let deadline = crate::deadline::Deadline::from_timeout_secs(timeout);
+    let run = crate::resource::RunContext::new(crate::resource::ResourceBudget::resolve(timeout));
+    let _in_run = run.enter();
     let root_dir = resolve_repo_root(root_dir)?;
     // `!(a > 0 && a < 1)` rather than `a <= 0 || a >= 1`: every comparison
     // against NaN is false, so the negated form is the one that rejects it.
@@ -547,12 +551,26 @@ pub fn compute_scored_state(
         &mut seen_frag_ids,
         Some(&mut batch_reader),
         true,
+        &run,
     );
 
     let t_parse_changed = Instant::now();
 
     let included_set: FxHashSet<PathBuf> = changed_files.iter().cloned().collect();
-    let all_candidate_files = candidate_files::collect_candidate_files(&root_dir, &included_set);
+    // Past the deadline the changed files are the whole universe: no walk,
+    // no discovery, a graph over the change alone — a valid, partial artifact
+    // instead of an abort.
+    let mut all_candidate_files = if run.check() {
+        candidate_files::collect_candidate_files(&root_dir, &included_set)
+    } else {
+        run.note(crate::resource::LimitReason::DiscoveryTruncated);
+        Vec::new()
+    };
+    if all_candidate_files.len() > run.budget().max_candidate_files {
+        all_candidate_files.truncate(run.budget().max_candidate_files);
+        run.note(crate::resource::LimitReason::CandidateLimit);
+    }
+    run.record_usage(|u| u.candidate_files = all_candidate_files.len() as u64);
 
     let t_universe = Instant::now();
 
@@ -566,8 +584,7 @@ pub fn compute_scored_state(
     let provenance = crate::run_provenance::RunProvenance::new(
         &root_dir,
         diff_range,
-        crate::effective_config::EffectiveConfigV1::resolve(&config),
-        timeout,
+        crate::effective_config::EffectiveConfigV1::resolve(&config, timeout),
     );
 
     let mut expansion_concepts: FxHashSet<String> =
@@ -623,6 +640,7 @@ pub fn compute_scored_state(
         &mut seen_frag_ids,
         Some(&mut batch_reader),
         false,
+        &run,
     ));
 
     let t_parse_discovered = Instant::now();
@@ -658,10 +676,22 @@ pub fn compute_scored_state(
         Some(root_dir.as_path()),
         Some(&seed_weights),
         Some(&discovered_path_set),
-        deadline,
+        &run,
     );
 
-    let needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
+    let mut needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
+    if needs.len() > run.budget().max_needs {
+        // Highest priority first, then a total order, so the cap keeps the
+        // same needs on every machine.
+        needs.sort_by(|a, b| {
+            b.priority
+                .total_cmp(&a.priority)
+                .then_with(|| a.need_type.cmp(&b.need_type))
+                .then_with(|| a.symbol.cmp(&b.symbol))
+        });
+        needs.truncate(run.budget().max_needs);
+        run.note(crate::resource::LimitReason::NeedLimit);
+    }
 
     let t_done = Instant::now();
     batch_reader.close();
@@ -713,6 +743,7 @@ pub fn compute_scored_state(
         commit_message,
         heavy_latency_ms,
         provenance,
+        run,
         envelope_tokens: 0,
     };
     state.envelope_tokens = envelope_tokens_of(&state);
@@ -801,6 +832,8 @@ pub fn select_and_postpass(
         if ungated { "none" } else { "admission" },
         tau
     );
+    let trace = std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some();
+    let t_stage = Instant::now();
     let selection_result = match objective {
         crate::mode::ObjectiveMode::BoltzmannModular => {
             let beta = crate::utility::calibrate_beta(
@@ -837,6 +870,10 @@ pub fn select_and_postpass(
         }
     };
 
+    if trace {
+        eprintln!("selection greedy: {:.1}s", t_stage.elapsed().as_secs_f64());
+    }
+    let t_stage = Instant::now();
     let selection_iters = selection_result.greedy_iters;
     let stopping_certificate = selection_result.stopping_certificate;
     let stand_in_ids = selection_result.stand_in_ids;
@@ -850,6 +887,13 @@ pub fn select_and_postpass(
         scoring_result.admissible_files.as_ref(),
     );
 
+    if trace {
+        eprintln!(
+            "selection coherence: {:.1}s",
+            t_stage.elapsed().as_secs_f64()
+        );
+    }
+    let t_stage = Instant::now();
     postpass::rescue_nontrivial_context(
         &mut selected,
         all_fragments,
@@ -858,6 +902,9 @@ pub fn select_and_postpass(
         effective_budget,
         scoring_result.admissible_files.as_ref(),
     );
+    if trace {
+        eprintln!("selection rescue: {:.1}s", t_stage.elapsed().as_secs_f64());
+    }
 
     PostpassOutcome {
         selected,
@@ -924,6 +971,10 @@ pub fn run_selection(
     tau: Option<f64>,
 ) -> SelectionOutcome {
     let t_start = Instant::now();
+    // Selection runs after the heavy phase returned, often on another thread
+    // (the Python bridge re-runs it per cell): publish the run context again
+    // so the greedy can poll the same deadline.
+    let _in_run = state.run.enter();
     let effective_budget = budget_tokens.unwrap_or_else(|| {
         let core_tokens: u32 = state
             .all_fragments
@@ -961,6 +1012,7 @@ pub fn run_selection(
         Ok(r) => Some(r),
         Err(_) => None,
     };
+    let t_ensure = Instant::now();
     postpass::ensure_changed_files_represented(
         &mut selected,
         &state.all_fragments,
@@ -975,6 +1027,12 @@ pub fn run_selection(
     );
     if let Some(mut r) = batch_reader {
         r.close();
+    }
+    if std::env::var_os("DIFFCTX_TRACE_BUILDERS").is_some() {
+        eprintln!(
+            "selection ensure_changed: {:.1}s",
+            t_ensure.elapsed().as_secs_f64()
+        );
     }
 
     crate::provenance::maybe_dump(state, &selected);
@@ -1086,6 +1144,7 @@ pub fn select_with_params(
             .collect(),
     });
     output.provenance = Some(state.provenance.finish(Some(selection_provenance), true));
+    output.coverage = crate::resource::CoverageReport::from_context(&state.run);
     output
 }
 
@@ -1431,6 +1490,7 @@ fn build_diff_context_full(
         &mut seen_frag_ids,
         Some(&mut batch_reader),
         true,
+        &crate::resource::RunContext::unbounded(),
     );
     assign_token_counts(&mut all_fragments);
     let mut sig_frags = generate_signature_variants(&all_fragments);
@@ -1510,13 +1570,13 @@ fn empty_scored_state(root_dir: PathBuf, diff_range: Option<&str>, timeout: u64)
     let provenance = crate::run_provenance::RunProvenance::new(
         &root_dir,
         diff_range,
-        crate::effective_config::EffectiveConfigV1::resolve(&config),
-        timeout,
+        crate::effective_config::EffectiveConfigV1::resolve(&config, timeout),
     );
     ScoredState {
         root_dir,
         config,
         provenance,
+        run: crate::resource::RunContext::unbounded(),
         all_fragments: Vec::new(),
         core_ids: FxHashSet::default(),
         core_excerpts: FxHashMap::default(),
@@ -1569,6 +1629,8 @@ pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput 
     output.lockfile_changes = state.lockfile_changes.clone();
     output.ignored_changes = state.ignored_changes.clone();
     output.policy_excluded_count = state.policy_excluded_count;
+    output.provenance = Some(state.provenance.finish(None, true));
+    output.coverage = crate::resource::CoverageReport::from_context(&state.run);
     output
 }
 

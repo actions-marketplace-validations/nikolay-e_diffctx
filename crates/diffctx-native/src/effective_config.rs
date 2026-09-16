@@ -15,10 +15,11 @@ use std::collections::BTreeSet;
 use serde::Serialize;
 
 use crate::config::filtering::FILTERING;
-use crate::config::limits::{LIMITS, PPR, UTILITY};
+use crate::config::limits::{PPR, UTILITY};
 use crate::config::needs::NEEDS;
 use crate::config::scoring::{EGO, PIT, RRF};
 use crate::mode::{ObjectiveMode, PipelineConfig, ScoringMode};
+use crate::resource::ResourceBudget;
 use crate::tokenizer::{TokenCounter, TokenizerId};
 
 pub const SCHEMA: &str = "diffctx.effective_config.v1";
@@ -123,8 +124,9 @@ pub struct EffectiveConfigV1 {
     pub bm25_discovery_top_k: usize,
     pub file_admission: bool,
     pub commit_signal: bool,
-    pub max_fragments_per_file: usize,
-    pub max_out_edges_per_node: usize,
+    /// Every cap the run is held to. A cap that binds changes the artifact,
+    /// so the caps are part of the configuration and of its hash.
+    pub resources: crate::resource::ResourceBudget,
     pub selection: SelectionParams,
     pub rescue: RescueParams,
     pub boltzmann: BoltzmannParams,
@@ -150,8 +152,12 @@ pub const SEMANTIC_ENV: &[&str] = &[
     "DIFFCTX_EGO_LEXICAL_EPS",
     "DIFFCTX_EGO_PER_HOP_DECAY",
     "DIFFCTX_FILE_ADMISSION",
+    "DIFFCTX_MAX_CANDIDATE_FILES",
+    "DIFFCTX_MAX_EDGE_CONTRIBUTIONS",
     "DIFFCTX_MAX_EDGES_PER_NODE",
     "DIFFCTX_MAX_FRAGMENTS",
+    "DIFFCTX_MAX_NEEDS",
+    "DIFFCTX_MAX_SOURCE_BYTES",
     "DIFFCTX_MIN_REL_FOR_BONUS",
     "DIFFCTX_NO_COMMIT_SIGNAL",
     "DIFFCTX_OBJECTIVE",
@@ -212,7 +218,7 @@ pub const NON_SEMANTIC_ENV: &[&str] = &[
 impl EffectiveConfigV1 {
     /// Reads the environment through the same accessors the phases use, so a
     /// value recorded here is the value that ran.
-    pub fn resolve(config: &PipelineConfig) -> Self {
+    pub fn resolve(config: &PipelineConfig, timeout_secs: u64) -> Self {
         let selection = crate::config::selection::selection();
         let rescue = crate::config::selection::rescue();
         let boltzmann = crate::config::selection::boltzmann();
@@ -231,8 +237,7 @@ impl EffectiveConfigV1 {
             bm25_discovery_top_k: config.bm25_top_k,
             file_admission: crate::scoring::file_admission_enabled(),
             commit_signal: std::env::var("DIFFCTX_NO_COMMIT_SIGNAL").as_deref() != Ok("1"),
-            max_fragments_per_file: LIMITS.max_fragments,
-            max_out_edges_per_node: crate::graph::read_max_out_edges_per_node(),
+            resources: crate::resource::ResourceBudget::resolve(timeout_secs),
             selection: SelectionParams {
                 core_budget_fraction: selection.core_budget_fraction,
                 r_cap_min: selection.r_cap_min,
@@ -365,7 +370,7 @@ mod tests {
     use super::*;
 
     fn config() -> EffectiveConfigV1 {
-        EffectiveConfigV1::resolve(&PipelineConfig::from_mode(ScoringMode::Ego))
+        EffectiveConfigV1::resolve(&PipelineConfig::from_mode(ScoringMode::Ego), 300)
     }
 
     #[test]

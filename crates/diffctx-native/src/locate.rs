@@ -85,6 +85,11 @@ pub struct Coverage {
     /// lowers that bar and so *increased* the reported gap.
     #[serde(skip_serializing_if = "crate::render::is_zero")]
     pub next_up: usize,
+    /// What stopped the run short of a complete pass, in the one vocabulary
+    /// every surface uses (`diffctx.resource.LimitReason`). Empty on a
+    /// complete run.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub limit_reasons: Vec<crate::resource::LimitReason>,
     /// Documented heuristic in [0, 1], NOT a probability and not a promise:
     /// `parsed_share * linked_share * fit_share`, less 0.1 when PPR truncated.
     /// It says how much of the changed surface the run could see and fit — it
@@ -101,6 +106,7 @@ impl Coverage {
             && self.zero_edge_files.is_empty()
             && !self.ppr_truncated
             && self.next_up == 0
+            && self.limit_reasons.is_empty()
     }
 }
 
@@ -346,6 +352,7 @@ fn build_coverage(
         zero_edge_files: zero_edge,
         ppr_truncated: truncated,
         next_up,
+        limit_reasons: state.run.reasons(),
         confidence: (raw.clamp(0.0, 1.0) * 1e2).round() / 1e2,
     }
 }

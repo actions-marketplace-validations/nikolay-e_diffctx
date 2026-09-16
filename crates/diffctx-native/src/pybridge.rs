@@ -30,35 +30,18 @@ create_exception!(
     pyo3::exceptions::PyTimeoutError
 );
 
-/// Runs a compute phase off the GIL and converts an expired deadline back into
-/// an ordinary Python error.
+/// Runs a compute phase off the GIL.
 ///
-/// The deadline fires as a panic (see `deadline::Deadline`: the phases it
-/// guards run deep inside call chains that do not return `Result`), which
-/// pyo3 would otherwise surface as `pyo3_runtime.PanicException` — a
-/// `BaseException` no caller catches by accident, and under the old
-/// `panic = "abort"` release profile not an exception at all but SIGABRT for
-/// the whole interpreter. Any other panic is re-raised unchanged: this
-/// converts the one outcome that is routine, not every bug.
+/// The compute deadline is cooperative (`resource::RunContext`): an expired
+/// run returns a partial artifact whose `coverage` block names the limit,
+/// so nothing here maps a panic to an error any more. `ComputeTimeoutError`
+/// stays exported for callers that still name it; the engine no longer
+/// raises it — a git subprocess that overruns is a `GitError`.
 fn detach_guarded<T: Send>(
     py: Python<'_>,
     work: impl FnOnce() -> anyhow::Result<T> + Send,
 ) -> PyResult<T> {
-    let outcome =
-        py.detach(
-            move || match std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)) {
-                Ok(result) => Ok(result),
-                Err(payload) => match crate::deadline::deadline_panic_message(payload.as_ref()) {
-                    Some(message) => Err(message),
-                    None => std::panic::resume_unwind(payload),
-                },
-            },
-        );
-    match outcome {
-        Ok(Ok(value)) => Ok(value),
-        Ok(Err(e)) => Err(map_pipeline_err(e)),
-        Err(message) => Err(ComputeTimeoutError::new_err(message)),
-    }
+    py.detach(work).map_err(map_pipeline_err)
 }
 
 /// `--mode locate` (#126): same pipeline and selection as pack mode, rendered
@@ -344,6 +327,11 @@ fn diff_context_output_to_dict<'py>(
         let value = serde_json::to_value(provenance)
             .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
         dict.set_item("provenance", json_to_py(py, &value)?)?;
+    }
+    if let Some(ref coverage) = output.coverage {
+        let value = serde_json::to_value(coverage)
+            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
+        dict.set_item("coverage", json_to_py(py, &value)?)?;
     }
     Ok(dict)
 }

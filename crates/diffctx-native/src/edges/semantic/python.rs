@@ -143,11 +143,16 @@ impl EdgeBuilder for PythonEdgeBuilder {
 
         let mut edges: EdgeDict = FxHashMap::default();
 
+        let mut reported = 0u64;
         for (i, f) in py_frags.iter().enumerate() {
             // A 10k-module monorepo still emits tens of millions of edges at
-            // the 8-file cap (#196); the between-builders deadline check
-            // cannot interrupt a single builder, so poll inside the loop.
-            crate::deadline::check_current_every(i, 256, "edge construction (python)");
+            // the 8-file cap (#196); the between-builders check cannot
+            // interrupt a single builder, so poll inside the loop — for the
+            // deadline and for the contribution cap alike.
+            if !crate::resource::poll_current(i, 256, edges.len() as u64 - reported) {
+                break;
+            }
+            reported = edges.len() as u64;
             let self_defs = frag_defines.get(&f.id).cloned().unwrap_or_default();
             let src_imports = frag_imports.get(&f.id).cloned().unwrap_or_default();
 

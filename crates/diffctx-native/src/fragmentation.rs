@@ -266,9 +266,11 @@ pub fn process_files_for_fragments(
     seen_frag_ids: &mut FxHashSet<FragmentId>,
     mut batch_reader: Option<&mut CatFileBatch>,
     is_changed: bool,
+    ctx: &crate::resource::RunContext,
 ) -> Vec<Fragment> {
     let max_frags = LIMITS.max_fragments;
     let max_generated = LIMITS.max_generated_fragments;
+    let max_source_bytes = ctx.budget().max_source_bytes;
 
     // Process files in chunks: sequential read (CatFileBatch is &mut, !Send) then
     // parallel parse within each chunk. Peak raw-content memory = chunk_size × max_file_size
@@ -276,6 +278,20 @@ pub fn process_files_for_fragments(
     let chunk_size = rayon::current_num_threads().max(1);
     let mut parsed: Vec<Vec<Fragment>> = Vec::with_capacity(files.len());
     for chunk in files.chunks(chunk_size) {
+        // A chunk is the unit of cancellation: past the deadline or the
+        // byte cap the remaining discovered files stay unparsed and the
+        // coverage block says which limit stopped the read. Neither limit
+        // touches the changed files: a changed file the reader cannot see is
+        // not a partial artifact but a wrong one.
+        if !is_changed {
+            if !ctx.check() {
+                break;
+            }
+            if ctx.usage().source_bytes > max_source_bytes {
+                ctx.note(crate::resource::LimitReason::TotalByteLimit);
+                break;
+            }
+        }
         let chunk_contents: Vec<(PathBuf, String)> = chunk
             .iter()
             .filter_map(|file_path| {
@@ -289,6 +305,11 @@ pub fn process_files_for_fragments(
                 Some((file_path.clone(), content))
             })
             .collect();
+        let chunk_bytes: u64 = chunk_contents.iter().map(|(_, c)| c.len() as u64).sum();
+        ctx.record_usage(|u| {
+            u.source_bytes += chunk_bytes;
+            u.parsed_files += chunk_contents.len() as u64;
+        });
         parsed.extend(
             chunk_contents
                 .par_iter()

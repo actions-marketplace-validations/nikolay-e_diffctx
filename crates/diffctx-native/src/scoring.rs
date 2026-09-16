@@ -103,7 +103,7 @@ pub trait ScoringStrategy: Send + Sync {
         repo_root: Option<&Path>,
         seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         discovered_paths: Option<&FxHashSet<Arc<str>>>,
-        deadline: crate::deadline::Deadline,
+        ctx: &crate::resource::RunContext,
     ) -> ScoringResult;
 }
 
@@ -126,12 +126,11 @@ impl ScoringStrategy for PPRScoring {
         repo_root: Option<&Path>,
         seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
-        deadline: crate::deadline::Deadline,
+        ctx: &crate::resource::RunContext,
     ) -> ScoringResult {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
         let t_graph = Instant::now();
-        let capped =
-            edges::collect_capped_edges(all_fragments, repo_root, skip_expensive, deadline);
+        let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive, ctx);
         let admissible_files = file_admission_enabled().then(|| {
             edges::naming_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
         });
@@ -150,6 +149,7 @@ impl ScoringStrategy for PPRScoring {
         );
         let mut rel_scores = ppr.scores;
         if ppr.truncated {
+            ctx.note(crate::resource::LimitReason::DiffusionTruncated);
             tracing::warn!(
                 "PPR push-cap hit on {} nodes (fwd_pushes={}, bwd_pushes={}); rel_scores biased",
                 g.node_count(),
@@ -194,12 +194,11 @@ impl ScoringStrategy for EgoGraphScoring {
         repo_root: Option<&Path>,
         _seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
-        deadline: crate::deadline::Deadline,
+        ctx: &crate::resource::RunContext,
     ) -> ScoringResult {
         let skip_expensive = all_fragments.len() > LIMITS.skip_expensive_threshold;
         let t_graph = Instant::now();
-        let capped =
-            edges::collect_capped_edges(all_fragments, repo_root, skip_expensive, deadline);
+        let capped = edges::collect_capped_edges(all_fragments, repo_root, skip_expensive, ctx);
         let admissible_files = file_admission_enabled().then(|| {
             edges::naming_reachable_files(&capped, core_ids, SEMANTIC_DISCOVERY.max_depth)
         });
@@ -256,7 +255,7 @@ impl ScoringStrategy for BM25Scoring {
         _repo_root: Option<&Path>,
         _seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         _discovered_paths: Option<&FxHashSet<Arc<str>>>,
-        _deadline: crate::deadline::Deadline,
+        _ctx: &crate::resource::RunContext,
     ) -> ScoringResult {
         let query_tokens: Vec<String> = all_fragments
             .iter()
@@ -449,7 +448,7 @@ fn run_fusion_components(
     repo_root: Option<&Path>,
     seed_weights: Option<&FxHashMap<FragmentId, f64>>,
     discovered_paths: Option<&FxHashSet<Arc<str>>>,
-    deadline: crate::deadline::Deadline,
+    ctx: &crate::resource::RunContext,
 ) -> FusionComponents {
     let ego = EgoGraphScoring::new(ego_depth).score_and_filter(
         all_fragments,
@@ -458,7 +457,7 @@ fn run_fusion_components(
         repo_root,
         seed_weights,
         discovered_paths,
-        deadline,
+        ctx,
     );
     let lexical = BM25Scoring.score_and_filter(
         all_fragments,
@@ -467,7 +466,7 @@ fn run_fusion_components(
         repo_root,
         seed_weights,
         discovered_paths,
-        deadline,
+        ctx,
     );
     let ego_admitted: FxHashSet<FragmentId> = ego
         .filtered_fragments
@@ -540,7 +539,7 @@ impl ScoringStrategy for RrfFusionScoring {
         repo_root: Option<&Path>,
         seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         discovered_paths: Option<&FxHashSet<Arc<str>>>,
-        deadline: crate::deadline::Deadline,
+        ctx: &crate::resource::RunContext,
     ) -> ScoringResult {
         let c = run_fusion_components(
             self.ego_depth,
@@ -550,7 +549,7 @@ impl ScoringStrategy for RrfFusionScoring {
             repo_root,
             seed_weights,
             discovered_paths,
-            deadline,
+            ctx,
         );
         let rel_scores = fuse_reciprocal_ranks(
             &[
@@ -767,7 +766,7 @@ impl ScoringStrategy for PitFusionScoring {
         repo_root: Option<&Path>,
         seed_weights: Option<&FxHashMap<FragmentId, f64>>,
         discovered_paths: Option<&FxHashSet<Arc<str>>>,
-        deadline: crate::deadline::Deadline,
+        ctx: &crate::resource::RunContext,
     ) -> ScoringResult {
         let c = run_fusion_components(
             self.ego_depth,
@@ -777,7 +776,7 @@ impl ScoringStrategy for PitFusionScoring {
             repo_root,
             seed_weights,
             discovered_paths,
-            deadline,
+            ctx,
         );
         let (ego_pct, ego_top) = percentiles(
             &c.ego.rel_scores,
@@ -1186,7 +1185,7 @@ mod tests {
                 None,
                 None,
                 None,
-                crate::deadline::Deadline::none(),
+                &crate::resource::RunContext::unbounded(),
             );
             assert!(
                 result.filtered_fragments.is_empty(),

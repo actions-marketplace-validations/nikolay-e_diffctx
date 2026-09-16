@@ -124,7 +124,8 @@ it) to enable the sweep without rebuild.
 > `DIFFCTX_FILE_ADMISSION`, `DIFFCTX_PIT_SHAPE`,
 > `DIFFCTX_PIT_TRANSFORM`, `DIFFCTX_MAX_EDGES_PER_NODE`,
 > `DIFFCTX_TRACE_BUILDERS`, `DIFFCTX_TOKEN_SAFETY_FACTOR`,
-> `DIFFCTX_EVAL_STRICT`, and the
+> `DIFFCTX_EVAL_STRICT`, the resource caps `DIFFCTX_MAX_EDGE_CONTRIBUTIONS` /
+> `DIFFCTX_MAX_SOURCE_BYTES` / `DIFFCTX_MAX_CANDIDATE_FILES` / `DIFFCTX_MAX_NEEDS`, and the
 > `DIFFCTX_PROVENANCE_DUMP=<path>` per-candidate telemetry sink) — are experimental
 > calibration knobs for research and sensitivity analysis, not a supported
 > public API. They are undocumented in `--help` on purpose and may change or

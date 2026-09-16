@@ -79,6 +79,10 @@ pub struct DiffContextOutput {
     /// harness, an empty tree).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provenance: Option<crate::run_provenance::ProvenanceV1>,
+    /// Present only when a limit stopped the run short: what stopped it and
+    /// what was consumed. A complete run's output carries no block.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coverage: Option<crate::resource::CoverageReport>,
 }
 
 pub struct LatencyBreakdown {
@@ -307,6 +311,7 @@ impl DiffContextOutput {
             fragments: Vec::new(),
             latency: None,
             provenance: None,
+            coverage: None,
         }
     }
 }
@@ -464,6 +469,7 @@ pub fn build_diff_context_output(
         fragments: fragments_out,
         latency: None,
         provenance: None,
+        coverage: None,
     }
 }
 
@@ -486,6 +492,7 @@ mod tests {
             fragments: Vec::new(),
             latency: None,
             provenance: None,
+            coverage: None,
         }
     }
 

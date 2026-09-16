@@ -44,12 +44,12 @@ pub mod render;
 
 // Orchestration and shared configuration.
 pub mod config;
-pub mod deadline;
 pub mod effective_config;
 pub mod memory_pipeline;
 pub mod mode;
 pub(crate) mod peak_rss;
 pub mod pipeline;
+pub mod resource;
 pub mod run_provenance;
 #[cfg(test)]
 pub(crate) mod test_rng;

@@ -210,6 +210,8 @@ def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
         file.write("fragments:\n")
         for frag in tree["fragments"]:
             _write_yaml_fragment(file, frag, "  ")
+    if tree.get("coverage"):
+        _write_yaml_value(file, "coverage", tree["coverage"], "")
     if tree.get("provenance"):
         _write_yaml_value(file, "provenance", tree["provenance"], "")
 
@@ -516,6 +518,14 @@ def _write_md_path_list(file: TextIO, tree: dict[str, Any], key: str, title: str
 _OMITTED_MARK = " — omitted"
 
 
+def _coverage_note(tree: dict[str, Any]) -> str | None:
+    coverage = tree.get("coverage")
+    if not coverage:
+        return None
+    reasons = ", ".join(str(r) for r in coverage.get("limit_reasons") or [])
+    return f"Coverage: {coverage.get('status', 'partial')} — the run stopped at a limit ({reasons}); context may be missing."
+
+
 def _write_md_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
     changed = tree.get("changed_files") or []
     if not changed:
@@ -534,6 +544,8 @@ def _write_md_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
 def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_message"):
         file.write(f"> {tree['commit_message']}\n\n")
+    if note := _coverage_note(tree):
+        file.write(f"*{note}*\n\n")
     _write_md_changed_files(file, tree)
     _write_md_path_list(file, tree, "deleted_files", "Deleted files")
     if tree.get("renamed_files"):

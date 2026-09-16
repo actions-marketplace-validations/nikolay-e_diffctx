@@ -119,7 +119,7 @@ pub fn build_diff_context_in_memory(
         Some(&discovered_arc),
         // The corpus harness has no timeout contract; before #210 it
         // inherited whatever ceiling the last in-process run left behind.
-        crate::deadline::Deadline::none(),
+        &crate::resource::RunContext::unbounded(),
     );
 
     let needs = crate::utility::needs::needs_from_diff(&all_fragments, &core_ids, &diff_text);
