@@ -296,6 +296,16 @@ dismissing as bot noise.
   line exists.** The CD sdist gate printed five Rust paths for the log and
   died on the write error; the 1.16.0 release stopped at "Build sdist" with
   nothing published. `grep -m5` prints the same lines without a pipe.
+- **The release tag lives on GitHub only until the next Forgejo push prunes
+  it.** `cd.yml` tags on GitHub; Forgejo is the source of truth and its push
+  mirror removes any tag Forgejo does not have, and a removed tag turns the
+  published release into a draft (assets stop downloading, `npm install`
+  breaks — it fetches the binary from the release). 1.16.0 lost its tag
+  within minutes of the finalize job because a routine `git push origin
+  main` ran first. After every release, before any other push:
+  `git fetch github --tags && git push origin vX.Y.Z`; if the tag is already
+  gone, recreate it on the "Release version X.Y.Z" commit, push to Forgejo
+  first, then GitHub, then `gh release edit vX.Y.Z --draft=false`.
 - **Cancelling a running release publishes nothing** — the bump commits reach
   `github/main` only in the finalize job, so a cancelled `cd.yml` leaves
   `version.py` on the old version and the same version can be dispatched
