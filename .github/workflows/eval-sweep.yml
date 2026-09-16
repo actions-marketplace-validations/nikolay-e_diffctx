@@ -394,13 +394,20 @@ jobs:
       - name: Per-instance metric summary (always)
         if: always()
         run: |
-          ckpt="${CELL_DIR}/${{ matrix.test_set }}.checkpoint.jsonl"
-          if [ -f "${ckpt}" ]; then
+          # Baselines prefix the file with their name (bm25__<set>.checkpoint.jsonl),
+          # hence the leading wildcard; the bare name alone failed the bm25 smoke
+          # cell with a checkpoint sitting right beside the error.
+          found=0
+          for ckpt in "${CELL_DIR}"/*"${{ matrix.test_set }}.checkpoint.jsonl"; do
+            [ -f "${ckpt}" ] || continue
+            found=1
             python -m eval cell-metrics --ckpt "${ckpt}" --out "${CELL_DIR}/cell_summary.json"
             cat "${CELL_DIR}/cell_summary.json"
-          else
-            printf '{"error": "no checkpoint produced", "expected_path": "%s"}\n' "${ckpt}" \
-              > "${CELL_DIR}/cell_summary.json"
+          done
+          if [ "${found}" = "0" ]; then
+            printf '{"error": "no checkpoint produced", "expected_path": "%s"}\n' \
+              "${CELL_DIR}/*${{ matrix.test_set }}.checkpoint.jsonl" > "${CELL_DIR}/cell_summary.json"
+            ls -la "${CELL_DIR}" || true
           fi
 
       # A smoke run that reports "no checkpoint produced" and still goes green
