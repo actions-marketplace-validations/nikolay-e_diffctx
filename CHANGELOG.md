@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **One artifact, `diffctx.context.v1`, on every surface.** JSON and YAML
+  output open with `schema: diffctx.context.v1`; the document is generated
+  from the engine's type and pinned as `schemas/diffctx.context.v1.json`
+  (JSON Schema 2020-12, a test regenerates and compares it). The Python dict
+  is that same serialization — the hand-written `set_item` copy of the
+  shape, the one that never ran on the CLI path, is gone (#229).
 - **Every run records what produced it.** JSON and YAML output (and the
   Python dict) carry a `provenance` block — `diffctx.provenance.v1`: engine
   version, the input revisions as object ids, the resolved effective

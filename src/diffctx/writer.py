@@ -217,6 +217,8 @@ def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
 
 
 def write_tree_yaml(file: TextIO, tree: dict[str, Any]) -> None:
+    if tree.get("schema"):
+        file.write(f"schema: {tree['schema']}\n")
     name = _escape_yaml_string(str(tree["name"]))
     file.write(f'name: "{name}"\n')
     file.write(f"type: {tree['type']}\n")

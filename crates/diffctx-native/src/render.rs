@@ -4,6 +4,7 @@ use std::sync::Arc;
 use once_cell::sync::Lazy;
 use regex::Regex;
 use rustc_hash::{FxHashMap, FxHashSet};
+use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::config::render::RENDER;
@@ -42,38 +43,57 @@ where
     seq.end()
 }
 
-#[derive(Serialize)]
+/// The public artifact: the one document every surface derives from.
+pub const CONTEXT_SCHEMA: &str = "diffctx.context.v1";
+
+/// One rename as the labelled pair the artifact renders.
+#[derive(Serialize, JsonSchema)]
+pub struct RenameEntry {
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Serialize, JsonSchema)]
 pub struct DiffContextOutput {
+    /// `diffctx.context.v1`: the schema a consumer validates against; the
+    /// document below is generated from this type and pinned by test.
+    pub schema: &'static str,
     pub name: String,
     #[serde(rename = "type")]
     pub output_type: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit_message: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub changed_files: Vec<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deleted_files: Vec<String>,
     #[serde(
+        default,
         skip_serializing_if = "Vec::is_empty",
         serialize_with = "serialize_renames"
     )]
+    #[schemars(with = "Vec<RenameEntry>")]
     pub renamed_files: Vec<(String, String)>,
     /// Lock files touched by the range. Paths only — the raw hunks are
     /// thousands of tokens of checksum churn for one line of signal (#112).
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lockfile_changes: Vec<String>,
     /// Changed files withheld by ignore rules. Silent exclusion misreads as
     /// "the diff did not touch this" (#188: a reviewer filed "no tests"
     /// against a change whose tests the tool had filtered).
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub ignored_changes: Vec<String>,
     /// Files excluded by `.diffctx/ignore` or secret-path policy — count
     /// only, see `ScoredState::policy_excluded_count`.
-    #[serde(skip_serializing_if = "is_zero")]
+    #[serde(default, skip_serializing_if = "is_zero")]
     pub policy_excluded_count: usize,
     pub fragment_count: usize,
     pub fragments: Vec<FragmentEntry>,
+    /// Telemetry, not artifact: two runs of one input must compare equal
+    /// without it, so it never enters the serialized document. The Python
+    /// bridge attaches it beside the artifact.
     #[serde(skip)]
+    #[schemars(skip)]
     pub latency: Option<LatencyBreakdown>,
     /// Absent only for outputs no pipeline run produced (the in-memory
     /// harness, an empty tree).
@@ -85,31 +105,77 @@ pub struct DiffContextOutput {
     pub coverage: Option<crate::resource::CoverageReport>,
 }
 
+/// JSON Schema 2020-12 for `diffctx.context.v1`, generated from the type —
+/// the hand-written copies (a Rust `set_item` bridge, a Python key list)
+/// are gone, so this is the only place the shape is stated.
+pub fn context_schema() -> serde_json::Value {
+    let mut generator = schemars::generate::SchemaSettings::draft2020_12().into_generator();
+    let schema = generator.root_schema_for::<DiffContextOutput>();
+    serde_json::to_value(schema).expect("schema serializes")
+}
+
+fn serialize_emissions<S>(
+    emissions: &[(&'static str, u64, u64)],
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    use serde::ser::SerializeMap;
+    let mut map = serializer.serialize_map(Some(emissions.len()))?;
+    for (category, raw, deduped) in emissions {
+        let mut counts = std::collections::BTreeMap::new();
+        counts.insert("raw", *raw);
+        counts.insert("deduped", *deduped);
+        map.serialize_entry(category, &counts)?;
+    }
+    map.end()
+}
+
+fn round_ms<S>(ms: &f64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_f64((ms * 10.0).round() / 10.0)
+}
+
+#[derive(Serialize)]
 pub struct LatencyBreakdown {
     /// Pre-heavy-phase work: hunk parse, untracked scan, ignore resolution and
     /// the `git diff` calls. Outside every timer until #183, which is why the
     /// reported phases could not be reconciled with the wall clock.
+    #[serde(serialize_with = "round_ms")]
     pub pre_phase_ms: f64,
+    #[serde(serialize_with = "round_ms")]
     pub parse_changed_ms: f64,
+    #[serde(serialize_with = "round_ms")]
     pub universe_walk_ms: f64,
+    #[serde(serialize_with = "round_ms")]
     pub discovery_ms: f64,
+    #[serde(serialize_with = "round_ms")]
     pub parse_discovered_ms: f64,
+    #[serde(serialize_with = "round_ms")]
     pub tokenization_ms: f64,
     /// Typed dependency graph construction: edge builders + dedup + hub
     /// suppression + per-source cap. Carved out of `scoring_ms` (which
     /// used to absorb it) so the cost distribution is truthful. Zero for
     /// BM25 mode (no graph built).
+    #[serde(serialize_with = "round_ms")]
     pub graph_build_ms: f64,
     /// Combined graph build + scoring + selection time. Kept for
     /// backward compatibility with the existing checkpoint schema; the
     /// split values below are the new diagnostic signal.
+    #[serde(serialize_with = "round_ms")]
     pub scoring_selection_ms: f64,
+    #[serde(serialize_with = "round_ms")]
     pub total_ms: f64,
     /// Heavy-phase rank computation only (PPR/EGO/BM25 + relevance
     /// filtering). Graph construction is reported in `graph_build_ms`;
     /// the selection stage is excluded.
+    #[serde(serialize_with = "round_ms")]
     pub scoring_ms: f64,
     /// Selection stage only (lazy greedy / Boltzmann + post-passes).
+    #[serde(serialize_with = "round_ms")]
     pub selection_ms: f64,
     /// Size of the candidate fragment universe handed to the scoring
     /// strategy (after fragment generation + signature variants but
@@ -152,10 +218,11 @@ pub struct LatencyBreakdown {
     /// pass 1 of the two-pass edge build, sorted by category name. Names
     /// the builder category behind near-dense emission blowups (#116).
     /// Empty for BM25 mode (no graph built).
+    #[serde(serialize_with = "serialize_emissions")]
     pub edge_emissions_by_category: Vec<(&'static str, u64, u64)>,
 }
 
-#[derive(Serialize, Clone)]
+#[derive(Serialize, JsonSchema, Clone)]
 pub struct FragmentEntry {
     pub path: String,
     pub lines: String,
@@ -298,6 +365,7 @@ impl DiffContextOutput {
     /// withheld-change disclosure went missing from exactly one of them.
     pub fn empty(name: &str) -> Self {
         DiffContextOutput {
+            schema: CONTEXT_SCHEMA,
             name: name.to_string(),
             output_type: "diff_context".to_string(),
             commit_message: None,
@@ -456,6 +524,7 @@ pub fn build_diff_context_output(
         .unwrap_or_else(|| resolved.to_string_lossy().to_string());
 
     DiffContextOutput {
+        schema: CONTEXT_SCHEMA,
         name,
         output_type: "diff_context".to_string(),
         commit_message: change.commit_message,
@@ -479,6 +548,7 @@ mod tests {
 
     fn empty_output(renamed_files: Vec<(String, String)>) -> DiffContextOutput {
         DiffContextOutput {
+            schema: CONTEXT_SCHEMA,
             name: "repo".to_string(),
             output_type: "diff_context".to_string(),
             commit_message: None,

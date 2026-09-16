@@ -5,13 +5,14 @@
 
 use std::path::Path;
 
+use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::effective_config::EffectiveConfigV1;
 
 pub const SCHEMA: &str = "diffctx.provenance.v1";
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, JsonSchema, Clone, Debug)]
 pub struct Engine {
     pub name: &'static str,
     pub version: &'static str,
@@ -19,7 +20,7 @@ pub struct Engine {
     pub build: Option<&'static str>,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, JsonSchema, Clone, Debug)]
 pub struct Input {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diff_range: Option<String>,
@@ -33,7 +34,7 @@ pub struct Input {
     pub working_tree: bool,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, JsonSchema, Clone, Debug)]
 pub struct Selection {
     pub budget_tokens: u32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -42,7 +43,7 @@ pub struct Selection {
     pub gate: &'static str,
 }
 
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, JsonSchema, Clone, Debug)]
 pub struct ProvenanceV1 {
     pub schema: &'static str,
     pub engine: Engine,

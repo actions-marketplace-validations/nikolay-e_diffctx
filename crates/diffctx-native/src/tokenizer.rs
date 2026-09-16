@@ -1,4 +1,5 @@
 use once_cell::sync::Lazy;
+use schemars::JsonSchema;
 use serde::Serialize;
 use tiktoken_rs::CoreBPE;
 
@@ -12,7 +13,7 @@ pub enum TokenizerError {
 /// expressed in. A budget of `N` means `N` tokens under THIS tokenizer; no
 /// model-specific tokenizer is emulated, and the id travels in provenance so
 /// a consumer counting against a different model knows what it is converting.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum TokenizerId {
     O200kBase,

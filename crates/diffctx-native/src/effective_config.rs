@@ -12,6 +12,7 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 
+use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::config::filtering::FILTERING;
@@ -38,32 +39,32 @@ pub const EDGE_WEIGHT_PROFILE_VERSION: &str = "v1-2026-08-20";
 /// keyed by content must not serve fragments an older parser produced.
 pub const PARSER_PROFILE_VERSION: &str = "v1-2026-09-02";
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct SelectionParams {
     pub core_budget_fraction: f64,
     pub r_cap_min: f64,
     pub per_file_budget_fraction: f64,
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct RescueParams {
     pub budget_fraction: f64,
     pub min_score_percentile: f64,
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct BoltzmannParams {
     pub calibration_tolerance: f64,
     pub bisect_iters: u32,
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct EgoParams {
     pub identifier_overlap_epsilon: f64,
     pub per_hop_decay: f64,
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct PitParams {
     pub blend: f64,
     pub agreement_bonus: f64,
@@ -72,13 +73,13 @@ pub struct PitParams {
     pub transform: String,
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct PprParams {
     pub alpha: f64,
     pub forward_blend: f64,
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct UtilityParams {
     pub eta: f64,
     pub structural_bonus_weight: f64,
@@ -86,32 +87,32 @@ pub struct UtilityParams {
     pub proximity_decay: f64,
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct FilteringParams {
     pub proximity_half_decay: f64,
     pub definition_proximity_half_decay: f64,
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct NeedsParams {
     pub min_rel_for_bonus: f64,
     pub relatedness_bonus: f64,
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct TokenizerParams {
     pub id: TokenizerId,
     pub safety_factor: f64,
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct Profiles {
     pub scoring: &'static str,
     pub edge_weights: &'static str,
     pub parser: &'static str,
 }
 
-#[derive(Serialize, Clone, Debug, PartialEq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq)]
 pub struct EffectiveConfigV1 {
     pub schema: &'static str,
     pub scoring: &'static str,

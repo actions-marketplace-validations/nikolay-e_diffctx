@@ -90,6 +90,13 @@ keeps its git meaning.
 | `--with-raw-diff` | false | Also embed git's raw unified diff ahead of the selected fragments — additive (selection unchanged), not charged to `--budget`, lock/ignored/secret-like sections omitted. Python CLI only |
 | `--mode` | `pack` | `locate` emits the same ranked selection as compact `diffctx.locate.v1` JSON — path, lines, score, provenance reasons, a blast-radius `summary` and per-item impact `group` (`test`/`type`/`config`), NO source bodies. Adds a `coverage` block naming what the run could not see (`unparsed_files`, `zero_edge_files`, `ppr_truncated`, `next_up`, a heuristic `confidence`) and an `overflow` ranking of what the budget left behind — omitted entirely when there is nothing to disclose. `diffctx . --diff --mode locate` = impact of your uncommitted change. The MCP tool takes it as `mode="locate"` |
 
+Every JSON/YAML artifact opens with `schema: diffctx.context.v1` and validates
+against [`schemas/diffctx.context.v1.json`](schemas/diffctx.context.v1.json),
+generated from the engine's own type; it closes with a `provenance` block
+(engine version, input object ids, the effective configuration and its hash,
+the selection parameters, the tokenizer) and, when a limit stopped the run
+short, a `coverage` block naming it.
+
 ### `graph` subcommand
 
 Explore the underlying dependency graph directly, without a diff:

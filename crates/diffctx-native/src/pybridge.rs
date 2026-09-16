@@ -216,124 +216,33 @@ fn select_with_params<'py>(
     diff_context_output_to_dict(py, &output, None)
 }
 
-/// The ONE place a `DiffContextOutput` becomes a Python dict.
+/// The ONE place a `DiffContextOutput` becomes a Python dict: the artifact
+/// serializes through serde, exactly as it does for the CLI's JSON and YAML,
+/// and crosses as the value it denotes. The bridge used to repeat every field
+/// by hand (#183, #229) — a field added to the struct had to be repeated
+/// here, and nothing made the copies agree.
 ///
-/// `build_diff_context` used to inline a second, character-for-character copy
-/// of this. That is how `pre_phase_ms` came to be missing from both call sites
-/// at once (#183): a field added to the struct has to be repeated by hand, and
-/// nothing makes the two copies agree. The only behavioural difference between
-/// them was the fallback below, so it became a parameter rather than a reason
-/// to keep the fork.
-///
-/// `fallback_total_ms` is used only when the pipeline reported no latency block
-/// at all — the caller's own wall-clock reading, so the dict still carries a
-/// `total_ms` rather than an empty `latency`.
+/// `latency` is telemetry outside the artifact; it rides beside it, with
+/// `fallback_total_ms` (the caller's own wall-clock reading) when the
+/// pipeline reported no block at all.
 fn diff_context_output_to_dict<'py>(
     py: Python<'py>,
     output: &DiffContextOutput,
     fallback_total_ms: Option<f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let dict = PyDict::new(py);
-    dict.set_item("name", &output.name)?;
-    dict.set_item("type", "diff_context")?;
-    if let Some(ref msg) = output.commit_message {
-        dict.set_item("commit_message", msg)?;
+    let runtime = |e: serde_json::Error| pyo3::exceptions::PyRuntimeError::new_err(e.to_string());
+    let mut value = serde_json::to_value(output).map_err(runtime)?;
+    let latency = match (&output.latency, fallback_total_ms) {
+        (Some(lb), _) => serde_json::to_value(lb).map_err(runtime)?,
+        (None, Some(total)) => serde_json::json!({ "total_ms": (total * 10.0).round() / 10.0 }),
+        (None, None) => serde_json::json!({}),
+    };
+    if let serde_json::Value::Object(ref mut map) = value {
+        map.insert("latency".to_string(), latency);
     }
-    if !output.changed_files.is_empty() {
-        dict.set_item("changed_files", &output.changed_files)?;
-    }
-    if !output.deleted_files.is_empty() {
-        dict.set_item("deleted_files", &output.deleted_files)?;
-    }
-    if !output.lockfile_changes.is_empty() {
-        dict.set_item("lockfile_changes", &output.lockfile_changes)?;
-    }
-    if !output.ignored_changes.is_empty() {
-        dict.set_item("ignored_changes", &output.ignored_changes)?;
-    }
-    if output.policy_excluded_count > 0 {
-        dict.set_item("policy_excluded_count", output.policy_excluded_count)?;
-    }
-    if !output.renamed_files.is_empty() {
-        let renames = PyList::empty(py);
-        for (from, to) in &output.renamed_files {
-            let pair = PyDict::new(py);
-            pair.set_item("from", from)?;
-            pair.set_item("to", to)?;
-            renames.append(pair)?;
-        }
-        dict.set_item("renamed_files", renames)?;
-    }
-    dict.set_item("fragment_count", output.fragment_count)?;
-
-    let frag_list = PyList::empty(py);
-    for entry in &output.fragments {
-        let frag_dict = PyDict::new(py);
-        frag_dict.set_item("path", &entry.path)?;
-        frag_dict.set_item("lines", &entry.lines)?;
-        if let Some(ref role) = entry.role {
-            frag_dict.set_item("role", role)?;
-        }
-        frag_dict.set_item("kind", &entry.kind)?;
-        if let Some(ref s) = entry.symbol {
-            frag_dict.set_item("symbol", s)?;
-        }
-        if let Some(ref c) = entry.content {
-            frag_dict.set_item("content", c.as_ref())?;
-        }
-        frag_list.append(frag_dict)?;
-    }
-    dict.set_item("fragments", frag_list)?;
-
-    let latency = PyDict::new(py);
-    if let Some(ref lb) = output.latency {
-        let r = |v: f64| (v * 10.0).round() / 10.0;
-        latency.set_item("pre_phase_ms", r(lb.pre_phase_ms))?;
-        latency.set_item("parse_changed_ms", r(lb.parse_changed_ms))?;
-        latency.set_item("universe_walk_ms", r(lb.universe_walk_ms))?;
-        latency.set_item("discovery_ms", r(lb.discovery_ms))?;
-        latency.set_item("parse_discovered_ms", r(lb.parse_discovered_ms))?;
-        latency.set_item("tokenization_ms", r(lb.tokenization_ms))?;
-        latency.set_item("graph_build_ms", r(lb.graph_build_ms))?;
-        latency.set_item("scoring_selection_ms", r(lb.scoring_selection_ms))?;
-        latency.set_item("total_ms", r(lb.total_ms))?;
-        latency.set_item("scoring_ms", r(lb.scoring_ms))?;
-        latency.set_item("selection_ms", r(lb.selection_ms))?;
-        latency.set_item("candidate_count", lb.candidate_count)?;
-        latency.set_item("edge_count", lb.edge_count)?;
-        latency.set_item("greedy_iters", lb.greedy_iters)?;
-        latency.set_item("edges_before_cap", lb.edges_before_cap)?;
-        latency.set_item("edges_dropped_by_cap", lb.edges_dropped_by_cap)?;
-        latency.set_item("nodes_capped", lb.nodes_capped)?;
-        latency.set_item("max_out_edges_per_node", lb.max_out_edges_per_node)?;
-        latency.set_item("ppr_truncated", lb.ppr_truncated)?;
-        latency.set_item("ppr_forward_pushes", lb.ppr_forward_pushes)?;
-        latency.set_item("ppr_backward_pushes", lb.ppr_backward_pushes)?;
-        latency.set_item("stopping_certificate", lb.stopping_certificate)?;
-        latency.set_item("peak_rss_bytes", lb.peak_rss_bytes)?;
-        let emissions = PyDict::new(py);
-        for &(category, raw, deduped) in &lb.edge_emissions_by_category {
-            let counts = PyDict::new(py);
-            counts.set_item("raw", raw)?;
-            counts.set_item("deduped", deduped)?;
-            emissions.set_item(category, counts)?;
-        }
-        latency.set_item("edge_emissions_by_category", emissions)?;
-    } else if let Some(total) = fallback_total_ms {
-        latency.set_item("total_ms", (total * 10.0).round() / 10.0)?;
-    }
-    dict.set_item("latency", latency)?;
-    if let Some(ref provenance) = output.provenance {
-        let value = serde_json::to_value(provenance)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-        dict.set_item("provenance", json_to_py(py, &value)?)?;
-    }
-    if let Some(ref coverage) = output.coverage {
-        let value = serde_json::to_value(coverage)
-            .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))?;
-        dict.set_item("coverage", json_to_py(py, &value)?)?;
-    }
-    Ok(dict)
+    json_to_py(py, &value)?
+        .cast_into::<PyDict>()
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(e.to_string()))
 }
 
 /// A serde value as the Python object it denotes. The bridge used to spell

@@ -18,12 +18,13 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use schemars::JsonSchema;
 use serde::Serialize;
 
 /// Why a run did not do everything it could have. One vocabulary for every
 /// phase; consumers read `coverage.limit_reasons` and never a per-subsystem
 /// boolean.
-#[derive(Serialize, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Serialize, JsonSchema, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum LimitReason {
     UnsupportedLanguage,
@@ -46,7 +47,7 @@ pub enum LimitReason {
 /// Every cap a run is held to. `max_wall_secs` is the `--timeout`; the rest
 /// bound memory, which the wall clock alone never did — 38M edge
 /// contributions took 11 GB before a single one was deduplicated (#196).
-#[derive(Serialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, PartialEq, Eq)]
 pub struct ResourceBudget {
     pub max_wall_secs: u64,
     pub max_source_bytes: u64,
@@ -118,7 +119,7 @@ fn env_u64(name: &str, default: u64) -> u64 {
 
 /// What the run consumed, for the coverage block. Deterministic for a given
 /// input and configuration (counts, not clocks).
-#[derive(Serialize, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Serialize, JsonSchema, Clone, Debug, Default, PartialEq, Eq)]
 pub struct ResourceUsage {
     pub source_bytes: u64,
     pub parsed_files: u64,
@@ -129,7 +130,7 @@ pub struct ResourceUsage {
 
 /// The disclosure block of an artifact whose run hit a limit: absent when
 /// nothing limited the run, so a complete run's output is unchanged.
-#[derive(Serialize, Clone, Debug)]
+#[derive(Serialize, JsonSchema, Clone, Debug)]
 pub struct CoverageReport {
     pub status: &'static str,
     pub limit_reasons: Vec<LimitReason>,
