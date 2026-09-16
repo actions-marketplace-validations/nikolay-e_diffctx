@@ -251,14 +251,12 @@ jobs:
   # ============================================================================
   test:
     needs: [lint-type-check]
-    # CI is Linux-only across all Python versions (minimal, cheap: 1x minutes).
-    # macOS (10x) / Windows (2x) cross-platform coverage runs at RELEASE time in
-    # cd.yml — build-wheels compiles the Rust ext per-OS and smoke-pypi installs
-    # and exercises diffctx on ubuntu/macos/windows. No per-push macOS/Windows.
+    # The repository is public, so hosted macOS/Windows minutes cost nothing;
+    # release-time smoke in cd.yml alone let platform bugs land on main first.
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ['3.10', '3.11', '3.12', '3.13']
 
     runs-on: ${{ matrix.os }}
@@ -314,7 +312,11 @@ jobs:
             SYNC+=(--group eval)
           fi
           "${SYNC[@]}"
-          echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            cygpath -w "$PWD/.venv/Scripts" >> "$GITHUB_PATH"
+          else
+            echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+          fi
 
       - name: Run Tests with Coverage
         shell: bash
