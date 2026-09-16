@@ -7,7 +7,6 @@ use similar::{ChangeTag, TextDiff};
 
 use crate::config::budget::BUDGET;
 use crate::config::tokenization::TOKENIZATION;
-use crate::edges;
 use crate::mode::{PipelineConfig, ScoringMode};
 use crate::parsers::fragment_file;
 use crate::render::{DiffContextOutput, build_diff_context_output};
@@ -45,12 +44,29 @@ pub fn build_diff_context_in_memory(
         .map(|(k, v)| (PathBuf::from(k), v.clone()))
         .collect();
 
-    let discovered = edges::discover_all_related_files(
-        &changed_file_paths,
-        &all_file_paths,
-        None,
-        Some(&file_cache),
-    );
+    let mut config = PipelineConfig::from_mode(scoring_mode);
+    config.ppr_alpha = alpha;
+
+    // The product's discovery ensemble — structural, test-file, BM25 top-k —
+    // over the in-memory files. The harness used to run the structural
+    // strategy alone, so the corpus measured a narrower universe than the
+    // one shipped (#232): a test file or a lexical neighbour the product
+    // would have offered the selector never reached the oracle here.
+    let expansion_concepts: FxHashSet<String> =
+        crate::types::extract_identifiers(&diff_text, TOKENIZATION.query_min_identifier_length)
+            .into_iter()
+            .collect();
+    let discovery_ctx = crate::discovery::DiscoveryContext {
+        root_dir: PathBuf::from("."),
+        changed_files: changed_file_paths.clone(),
+        all_candidates: all_file_paths.clone(),
+        diff_text: diff_text.clone(),
+        expansion_concepts,
+        file_cache: file_cache.clone(),
+        token_corpus: std::sync::OnceLock::new(),
+    };
+    let (discovered, _attribution) =
+        crate::pipeline::create_discovery(&config).discover_attributed(&discovery_ctx);
     let discovered_paths: FxHashSet<String> = discovered
         .iter()
         .map(|p| p.to_string_lossy().to_string())
@@ -78,8 +94,6 @@ pub fn build_diff_context_in_memory(
     }
 
     let effective_budget = budget_tokens.unwrap_or(BUDGET.unlimited);
-    let mut config = PipelineConfig::from_mode(scoring_mode);
-    config.ppr_alpha = alpha;
 
     let discovered_arc: FxHashSet<Arc<str>> = discovered_paths
         .iter()

@@ -1696,7 +1696,7 @@ fn build_preferred_revs(base_rev: Option<&str>, head_rev: Option<&str>) -> Vec<S
     revs
 }
 
-fn create_discovery(config: &PipelineConfig) -> Box<dyn DiscoveryStrategy> {
+pub(crate) fn create_discovery(config: &PipelineConfig) -> Box<dyn DiscoveryStrategy> {
     Box::new(EnsembleDiscovery::new(vec![
         Box::new(DefaultDiscovery),
         Box::new(TestFileDiscovery),
