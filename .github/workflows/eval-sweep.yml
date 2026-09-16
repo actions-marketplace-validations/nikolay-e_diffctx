@@ -984,12 +984,17 @@ jobs:
           INPUT_TIMEOUT: '600'
           INPUT_MANIFESTS_SUBDIR: v1
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          set -euo pipefail
           git clone --depth 1 --branch main \
             "https://x-access-token:${GITHUB_TOKEN}@github.com/${REPO}.git" \
             sidecar
           cd sidecar
+          # The identity belongs to the clone that commits. Set on the outer
+          # checkout, it left this one anonymous: the first full sweep's
+          # commit failed, "|| echo nothing to commit" hid it, and three
+          # pushes of a branch that was never created followed.
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
           if git ls-remote --heads origin "${BR}" | grep -q "${BR}"; then
             git fetch origin "${BR}":"${BR}"
             git checkout "${BR}"
@@ -1011,7 +1016,11 @@ jobs:
           See \`aggregated/SWEEP_TABLE.md\` and \`cells/\` for raw per-instance JSONL checkpoints.
           EOF
           git add -A
-          git commit -m "sweep ${SWEEP_ID} (source ${GITHUB_SHA})" || echo "nothing to commit"
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+          else
+            git commit -m "sweep ${SWEEP_ID} (source ${GITHUB_SHA})"
+          fi
           pushed=0
           for attempt in 1 2 3; do
             echo "Push attempt ${attempt}/3..."
