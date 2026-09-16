@@ -19,6 +19,11 @@ name: eval-sweep
         default: smoke
         type: choice
         options: [smoke, full]
+      methods:
+        description: 'full mode: comma-separated methods to run (ppr,ego,bm25,internal-bm25,rrf,pit,aider) or all'
+        required: false
+        default: all
+        type: string
 
 concurrency:
   group: eval-sweep
@@ -43,6 +48,7 @@ jobs:
     outputs:
       sweep_id: ${{ steps.id.outputs.sweep_id }}
       ts: ${{ steps.id.outputs.ts }}
+      cells: ${{ steps.cells.outputs.cells }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - id: id
@@ -51,6 +57,13 @@ jobs:
           sha=$(git rev-parse --short HEAD)
           echo "sweep_id=sweep-${ts}-${sha}" >> "$GITHUB_OUTPUT"
           echo "ts=${ts}" >> "$GITHUB_OUTPUT"
+      # The full matrix, filtered by `methods`, so one arm can be rerun
+      # without paying for the other 60 cells (the aider rerun after its
+      # token accounting was fixed is the case that asked for it).
+      - id: cells
+        env:
+          METHODS: ${{ inputs.methods }}
+        run: python3 .github/scripts/sweep_cells.py "${METHODS:-all}" >> "$GITHUB_OUTPUT"
 
   # ============================================================================
   # 2. Provision Hetzner CCX63 — full mode only
@@ -465,66 +478,11 @@ jobs:
       # that rate anyway, so cap the matrix-level parallelism to match.
       max-parallel: 4
       # Budget axis collapsed (#52): diffctx methods and bm25 sweep every
-      # budget inside ONE cell via `run_final_eval --budgets ...` — the heavy
-      # phase (parse/graph/score) runs once per instance instead of once per
-      # budget. Budget lists per method are resolved in the `cfg` step.
-      # Aider has no shareable state across map_tokens values, so it keeps
-      # one budget per cell via `include` entries.
+      # budget inside ONE cell via `run_final_eval --budgets ...`; aider keeps
+      # one budget per cell. The cell list, its excludes and the reasons for
+      # them live in .github/scripts/sweep_cells.py.
       matrix:
-        method: [ppr, ego, bm25, internal-bm25, rrf, pit]
-        # `depth` is the EGO graph traversal radius; only meaningful for
-        # method=ego. PPR uses alpha (not depth), BM25 has no graph.
-        # Sentinel -1 means "depth does not apply"; non-EGO methods run
-        # only with depth=-1.
-        depth: [-1, 0, 1, 2, 3, 4]
-        test_set: [contextbench_verified, polybench500, swebench_verified]
-        exclude:
-          # Non-EGO methods: only the depth=-1 cell.
-          - {method: ppr, depth: 0}
-          - {method: ppr, depth: 1}
-          - {method: ppr, depth: 2}
-          - {method: ppr, depth: 3}
-          - {method: ppr, depth: 4}
-          - {method: bm25, depth: 0}
-          - {method: bm25, depth: 1}
-          - {method: bm25, depth: 2}
-          - {method: bm25, depth: 3}
-          - {method: bm25, depth: 4}
-          - {method: ego, depth: -1}
-          # `internal-bm25` maps to ScoringMode::Bm25, whose depth comes from
-          # `ego_depth_default` — a hardcoded 1 that `DIFFCTX_OP_GRAPH_DEPTH`
-          # does not reach (config/mode.rs). Its five depth cells were
-          # byte-identical copies of the depth=-1 cell, 15 of the 90.
-          #
-          # `rrf` and `pit` are NOT in that class, though they look like it:
-          # both map to `ego_depth_extended`, which the env override DOES
-          # reach (mode.rs deliberately gives fusion EGO's universe and depth),
-          # so their depth cells are five distinct configurations and the
-          # depth axis is exactly what the #125 fusion question needs. They
-          # were excluded here for one commit on a wrong reading and put back.
-          - {method: internal-bm25, depth: 0}
-          - {method: internal-bm25, depth: 1}
-          - {method: internal-bm25, depth: 2}
-          - {method: internal-bm25, depth: 3}
-          - {method: internal-bm25, depth: 4}
-        include:
-          # Aider: one budget per cell (B=-1 unlimited and B=0 recall-floor
-          # do not apply to a repo-map subprocess).
-          - {method: aider, depth: -1, test_set: contextbench_verified, budget: 8000}
-          - {method: aider, depth: -1, test_set: contextbench_verified, budget: 16000}
-          - {method: aider, depth: -1, test_set: contextbench_verified, budget: 32000}
-          - {method: aider, depth: -1, test_set: contextbench_verified, budget: 64000}
-          - {method: aider, depth: -1, test_set: contextbench_verified, budget: 128000}
-          - {method: aider, depth: -1, test_set: polybench500, budget: 8000}
-          - {method: aider, depth: -1, test_set: polybench500, budget: 16000}
-          - {method: aider, depth: -1, test_set: polybench500, budget: 32000}
-          - {method: aider, depth: -1, test_set: polybench500, budget: 64000}
-          - {method: aider, depth: -1, test_set: polybench500, budget: 128000}
-          - {method: aider, depth: -1, test_set: swebench_verified, budget: 8000}
-          - {method: aider, depth: -1, test_set: swebench_verified, budget: 16000}
-          - {method: aider, depth: -1, test_set: swebench_verified, budget: 32000}
-          - {method: aider, depth: -1, test_set: swebench_verified, budget: 64000}
-          - {method: aider, depth: -1, test_set: swebench_verified, budget: 128000}
+        include: ${{ fromJSON(needs.prep.outputs.cells) }}
     runs-on: [self-hosted, large]
     timeout-minutes: 350
     container:
