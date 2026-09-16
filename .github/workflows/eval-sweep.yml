@@ -854,8 +854,10 @@ jobs:
         if: always()
         run: |
           # Multi-budget cells (#52): one summary per b<budget>.checkpoint.jsonl.
+          # Baselines prefix both layouts with their name (bm25__<set>_budget_sweep,
+          # aider_fair__<set>.checkpoint.jsonl), hence the leading wildcard.
           found=0
-          for ckpt in "${CELL_DIR}/${{ matrix.test_set }}_budget_sweep"/b*.checkpoint.jsonl; do
+          for ckpt in "${CELL_DIR}"/*"${{ matrix.test_set }}_budget_sweep"/b*.checkpoint.jsonl; do
             [ -f "${ckpt}" ] || continue
             found=1
             b=$(basename "${ckpt}" .checkpoint.jsonl)
@@ -863,12 +865,13 @@ jobs:
             echo "=== ${b} ==="
             head -40 "${CELL_DIR}/cell_summary_${b}.json"
           done
-          ckpt="${CELL_DIR}/${{ matrix.test_set }}.checkpoint.jsonl"
-          if [ -f "${ckpt}" ]; then
+          for ckpt in "${CELL_DIR}"/*"${{ matrix.test_set }}.checkpoint.jsonl"; do
+            [ -f "${ckpt}" ] || continue
             found=1
             python -m eval cell-metrics --ckpt "${ckpt}" --out "${CELL_DIR}/cell_summary.json"
             cat "${CELL_DIR}/cell_summary.json"
-          fi
+          done
+          ckpt="${CELL_DIR}/*${{ matrix.test_set }}.checkpoint.jsonl"
           if [ "${found}" = "0" ]; then
             printf '{"error": "no checkpoint produced", "expected_path": "%s"}\n' "${ckpt}" \
               > "${CELL_DIR}/cell_summary.json"
