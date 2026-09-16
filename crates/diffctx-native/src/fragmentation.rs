@@ -130,7 +130,7 @@ fn has_generated_content_marker(content: &str) -> bool {
     false
 }
 
-fn is_generated_file(path: &Path, content: &str) -> bool {
+pub(crate) fn is_generated_file(path: &Path, content: &str) -> bool {
     let name = path
         .file_name()
         .map(|n| n.to_string_lossy().to_string())

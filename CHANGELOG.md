@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The artifact inventories every changed file and says which ones it
+  left out** (#263). `changes` carries one row per changed file — its
+  `class` (`content`, `unknown`, `mechanical`: one-line version/tag/digest
+  edits of the kind an image updater writes, `generated`), the `reason`, and
+  `represented`, false when no fragment of the file is in the output. JSON,
+  YAML, the Python dict, Markdown and text all say it; `locate`'s coverage
+  lists `unrepresented_changed_files`. An incomplete context is no longer
+  indistinguishable from a complete one on any surface.
+- **A multi-commit range is titled by all of its commits.** `commit_messages`
+  lists every subject in the range, newest first (up to 20); Markdown and
+  text render the list instead of whichever commit happened to be last, and
+  every subject feeds the query expansion, not only the head's.
 - **One artifact, `diffctx.context.v1`, on every surface.** JSON and YAML
   output open with `schema: diffctx.context.v1`; the document is generated
   from the engine's type and pinned as `schemas/diffctx.context.v1.json`

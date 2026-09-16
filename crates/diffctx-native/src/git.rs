@@ -792,6 +792,26 @@ pub fn show_file_at_revision(repo_root: &Path, rev: &str, rel_path: &Path) -> Re
     run_git(repo_root, &["show", &spec])
 }
 
+/// The subjects of every commit in `base..head`, newest first, at most
+/// `limit`. A multi-commit range used to be titled by whichever commit was
+/// last — on a GitOps branch that is the image updater's, not the person's.
+pub fn commit_subjects(repo_root: &Path, base: &str, head: &str, limit: usize) -> Vec<String> {
+    if validate_rev(base).is_err() || validate_rev(head).is_err() {
+        return Vec::new();
+    }
+    let range = format!("{base}..{head}");
+    let max = format!("--max-count={limit}");
+    match run_git(repo_root, &["log", "--format=%s", &max, &range, "--"]) {
+        Ok(out) => out
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .map(str::to_string)
+            .collect(),
+        Err(_) => Vec::new(),
+    }
+}
+
 pub fn get_commit_message(repo_root: &Path, rev: &str) -> Result<String> {
     if validate_rev(rev).is_err() {
         return Ok(String::new());

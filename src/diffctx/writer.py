@@ -174,7 +174,16 @@ def _write_yaml_value(file: TextIO, key: str, value: Any, indent: str) -> None:
             return
         file.write(f"{indent}{key}:\n")
         for item in value:
-            file.write(f'{indent}  - "{_escape_yaml_string(str(item))}"\n')
+            if isinstance(item, dict):
+                first = True
+                for sub_key, sub_value in item.items():
+                    prefix = f"{indent}  - " if first else f"{indent}    "
+                    first = False
+                    buf = io.StringIO()
+                    _write_yaml_value(buf, str(sub_key), sub_value, "")
+                    file.write(prefix + buf.getvalue().replace("\n", f"\n{indent}    ").rstrip(" ").rstrip("\n") + "\n")
+            else:
+                file.write(f'{indent}  - "{_escape_yaml_string(str(item))}"\n')
     elif isinstance(value, bool):
         file.write(f"{indent}{key}: {'true' if value else 'false'}\n")
     elif isinstance(value, (int, float)):
@@ -185,11 +194,15 @@ def _write_yaml_value(file: TextIO, key: str, value: Any, indent: str) -> None:
         file.write(f'{indent}{key}: "{_escape_yaml_string(str(value))}"\n')
 
 
-def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
+def _write_yaml_change_lists(file: TextIO, tree: dict[str, Any]) -> None:
     if tree.get("commit_message"):
         file.write(f'commit_message: "{_escape_yaml_string(str(tree["commit_message"]))}"\n')
+    if tree.get("commit_messages"):
+        _write_yaml_value(file, "commit_messages", tree["commit_messages"], "")
     if tree.get("changed_files"):
         _write_yaml_path_list(file, "changed_files", tree["changed_files"])
+    if tree.get("changes"):
+        _write_yaml_value(file, "changes", tree["changes"], "")
     if tree.get("deleted_files"):
         _write_yaml_path_list(file, "deleted_files", tree["deleted_files"])
     if tree.get("renamed_files"):
@@ -203,6 +216,10 @@ def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
         _write_yaml_path_list(file, "ignored_changes", tree["ignored_changes"])
     if tree.get("policy_excluded_count"):
         file.write(f"policy_excluded_count: {tree['policy_excluded_count']}\n")
+
+
+def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
+    _write_yaml_change_lists(file, tree)
     if tree.get("raw_diff"):
         _write_yaml_block(file, "raw_diff", tree["raw_diff"], "")
     if tree.get("fragments"):
@@ -335,7 +352,11 @@ def _write_text_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
 
 
 def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
-    if tree.get("commit_message"):
+    if tree.get("commit_messages"):
+        file.write(f"  commits: {len(tree['commit_messages'])}\n")
+        for subject in tree["commit_messages"]:
+            file.write(f"    {subject}\n")
+    elif tree.get("commit_message"):
         file.write(f"  change: {tree['commit_message']}\n")
     if tree.get("changed_files"):
         _write_text_changed_files(file, tree)
@@ -493,9 +514,10 @@ def _write_markdown_fragment(file: TextIO, frag: dict[str, Any]) -> None:
 
 
 def _omitted_changed_files(tree: dict[str, Any]) -> list[str]:
-    # Changed files the selection produced nothing for. Derived strictly from
-    # changed_files (already policy-clean: secret/ignored/deleted paths never
-    # enter it), so the footer can never name a withheld path.
+    # The engine's inventory row says whether anything of a changed file made
+    # it out; the fallback re-derives it for a dict without one.
+    if tree.get("changes"):
+        return [str(c["path"]) for c in tree["changes"] if not c.get("represented", True)]
     changed = tree.get("changed_files") or []
     if not changed:
         return []
@@ -544,7 +566,15 @@ def _write_md_changed_files(file: TextIO, tree: dict[str, Any]) -> None:
 
 
 def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
-    if tree.get("commit_message"):
+    if tree.get("commit_messages"):
+        # A range is titled by all of its commits, newest first — not by the
+        # one that happens to be last (#263).
+        subjects = tree["commit_messages"]
+        file.write(f"> {len(subjects)} commits:\n")
+        for subject in subjects:
+            file.write(f"> - {subject}\n")
+        file.write("\n")
+    elif tree.get("commit_message"):
         file.write(f"> {tree['commit_message']}\n\n")
     if note := _coverage_note(tree):
         file.write(f"*{note}*\n\n")

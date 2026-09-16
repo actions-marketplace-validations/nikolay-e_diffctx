@@ -70,6 +70,11 @@ pub struct ScoredState {
     pub discovery_source: FxHashMap<Arc<str>, &'static str>,
     pub preferred_revs: Vec<String>,
     pub commit_message: Option<String>,
+    /// Every subject of a multi-commit range, newest first (empty otherwise).
+    pub commit_messages: Vec<String>,
+    /// `(display path, class, reason)` per changed file — the priority the
+    /// evidence floor ranks by and the inventory row the artifact prints.
+    pub change_classes: Vec<(String, crate::change_class::ChangeClass, &'static str)>,
     pub heavy_latency_ms: HeavyLatencyMs,
     /// Everything a reader needs to reproduce this state: the resolved
     /// configuration and its hash, the input revisions, the limits in force.
@@ -254,6 +259,7 @@ struct ChangeSetData {
     policy_excluded: usize,
     preferred_revs: Vec<String>,
     commit_message: Option<String>,
+    commit_messages: Vec<String>,
     head_rev: Option<String>,
     pre_phase_ms: f64,
 }
@@ -462,6 +468,19 @@ fn resolve_change_set(
                 .map(str::to_string)
         });
 
+    // `A..B` names both ends; a bare `X` diffs X against the working tree,
+    // whose commits are `X..HEAD`. Only a range of two or more commits gets a
+    // subject list — one commit keeps `commit_message` alone.
+    let subject_range = match (base_rev.as_deref(), head_rev.as_deref()) {
+        (Some(base), Some(head)) => Some((base.to_string(), head.to_string())),
+        (None, None) => diff_range.map(|rev| (rev.to_string(), "HEAD".to_string())),
+        _ => None,
+    };
+    let commit_messages = subject_range
+        .map(|(base, head)| git::commit_subjects(root_dir, &base, &head, MAX_COMMIT_SUBJECTS))
+        .filter(|subjects| subjects.len() > 1)
+        .unwrap_or_default();
+
     let pre_phase_ms = t_entry.elapsed().as_secs_f64() * 1000.0;
     Ok(ChangeSet::Ready(Box::new(ChangeSetData {
         hunks,
@@ -474,6 +493,7 @@ fn resolve_change_set(
         policy_excluded,
         preferred_revs,
         commit_message,
+        commit_messages,
         head_rev,
         pre_phase_ms,
     })))
@@ -536,6 +556,7 @@ pub fn compute_scored_state(
         policy_excluded,
         preferred_revs,
         commit_message,
+        commit_messages,
         head_rev,
         pre_phase_ms,
     } = *data;
@@ -552,6 +573,14 @@ pub fn compute_scored_state(
         Some(&mut batch_reader),
         true,
         &run,
+    );
+
+    let change_classes = classify_changes(
+        &root_dir,
+        &changed_files,
+        &hunks,
+        &diff_text,
+        &all_fragments,
     );
 
     let t_parse_changed = Instant::now();
@@ -589,15 +618,22 @@ pub fn compute_scored_state(
             .into_iter()
             .collect();
 
-    if let Some(ref h) = head_rev {
-        if std::env::var("DIFFCTX_NO_COMMIT_SIGNAL").as_deref() != Ok("1") {
-            if let Ok(commit_msg) = git::get_commit_message(&root_dir, h) {
-                for ident in crate::types::extract_identifiers(
-                    &commit_msg,
-                    TOKENIZATION.query_min_identifier_length,
-                ) {
-                    expansion_concepts.insert(ident);
+    if std::env::var("DIFFCTX_NO_COMMIT_SIGNAL").as_deref() != Ok("1") {
+        // Every subject in the range, not the last one alone: a bot commit
+        // on top of a person's work must not be the only query signal (#263).
+        let mut signal: Vec<String> = commit_messages.clone();
+        if signal.is_empty() {
+            if let Some(ref h) = head_rev {
+                if let Ok(commit_msg) = git::get_commit_message(&root_dir, h) {
+                    signal.push(commit_msg);
                 }
+            }
+        }
+        for text in &signal {
+            for ident in
+                crate::types::extract_identifiers(text, TOKENIZATION.query_min_identifier_length)
+            {
+                expansion_concepts.insert(ident);
             }
         }
     }
@@ -712,6 +748,8 @@ pub fn compute_scored_state(
         policy_excluded_count: policy_excluded,
         preferred_revs,
         commit_message,
+        commit_messages,
+        change_classes,
         heavy_latency_ms,
         provenance,
         run,
@@ -719,6 +757,46 @@ pub fn compute_scored_state(
     };
     state.envelope_tokens = envelope_tokens_of(&state);
     Ok(state)
+}
+
+const MAX_COMMIT_SUBJECTS: usize = 20;
+
+/// The class of every changed file, keyed by its display path. Generated
+/// files are told by their header, which the first fragment of the file
+/// carries; the rest by the shape of their hunks and changed lines.
+pub(crate) fn classify_changes(
+    root_dir: &Path,
+    changed_files: &[PathBuf],
+    hunks: &[crate::types::DiffHunk],
+    diff_text: &str,
+    fragments: &[Fragment],
+) -> Vec<(String, crate::change_class::ChangeClass, &'static str)> {
+    let lines_by_file = crate::change_class::changed_lines_by_file(diff_text);
+    let mut head_by_path: FxHashMap<&str, &Fragment> = FxHashMap::default();
+    for f in fragments {
+        let entry = head_by_path.entry(f.path()).or_insert(f);
+        if f.start_line() < entry.start_line() {
+            *entry = f;
+        }
+    }
+    changed_files
+        .iter()
+        .map(|path| {
+            let display = crate::paths::display_rel_or_abs(root_dir, path);
+            let key = path.to_string_lossy();
+            let file_hunks: Vec<&crate::types::DiffHunk> = hunks
+                .iter()
+                .filter(|h| h.path.as_ref() == key.as_ref())
+                .collect();
+            let generated = head_by_path
+                .get(key.as_ref())
+                .is_some_and(|f| crate::fragmentation::is_generated_file(path, &f.content));
+            let empty = Vec::new();
+            let lines = lines_by_file.get(&display).unwrap_or(&empty);
+            let (class, reason) = crate::change_class::classify(&file_hunks, lines, generated);
+            (display, class, reason)
+        })
+        .collect()
 }
 
 /// The heavy phase from fragments onward: token counts, cores and their
@@ -1135,6 +1213,8 @@ pub fn select_with_params(
     let cap_stats = state.scoring_result.graph.cap_stats.clone();
     let change = render::ChangeSummary {
         commit_message: state.commit_message.clone(),
+        commit_messages: state.commit_messages.clone(),
+        changes: state.change_classes.clone(),
         changed_files: state
             .changed_files
             .iter()
@@ -1561,6 +1641,8 @@ fn build_diff_context_full(
     let (deleted_display, renamed_display) = deletion_rename_displays(&root_dir, diff_range);
     let change = render::ChangeSummary {
         commit_message,
+        commit_messages: Vec::new(),
+        changes: classify_changes(&root_dir, &changed_files, &hunks, "", &all_fragments),
         changed_files: changed_files
             .iter()
             .map(|p| crate::paths::display_rel_or_abs(&root_dir, p))
@@ -1650,6 +1732,8 @@ fn empty_scored_state(root_dir: PathBuf, diff_range: Option<&str>, timeout: u64)
         renamed_files: Vec::new(),
         preferred_revs: Vec::new(),
         commit_message: None,
+        commit_messages: Vec::new(),
+        change_classes: Vec::new(),
         heavy_latency_ms: HeavyLatencyMs::default(),
         envelope_tokens: 0,
     }
@@ -1673,6 +1757,7 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
 pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput {
     let mut output = empty_output(&state.root_dir);
     output.commit_message = state.commit_message.clone();
+    output.commit_messages = state.commit_messages.clone();
     output.deleted_files = state.deleted_files.clone();
     output.renamed_files = state.renamed_files.clone();
     output.lockfile_changes = state.lockfile_changes.clone();

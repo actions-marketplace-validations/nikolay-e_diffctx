@@ -19,10 +19,22 @@
         "null"
       ]
     },
+    "commit_messages": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "changed_files": {
       "type": "array",
       "items": {
         "type": "string"
+      }
+    },
+    "changes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ChangeEntry"
       }
     },
     "deleted_files": {
@@ -99,6 +111,54 @@
     "fragments"
   ],
   "$defs": {
+    "ChangeEntry": {
+      "description": "One changed file's inventory row: what kind of change it carries and\nwhether anything of it made it into the output. The row exists for every\nchanged file whatever the budget — an omission is stated, never implied.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "class": {
+          "$ref": "#/$defs/ChangeClass"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "represented": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "path",
+        "class",
+        "reason",
+        "represented"
+      ]
+    },
+    "ChangeClass": {
+      "oneOf": [
+        {
+          "description": "Hand-written, multi-line or otherwise substantive.",
+          "type": "string",
+          "const": "content"
+        },
+        {
+          "description": "Not classified with confidence; ranked with `Content`.",
+          "type": "string",
+          "const": "unknown"
+        },
+        {
+          "description": "One-line pin/tag/version/digest edits of the kind an updater writes.",
+          "type": "string",
+          "const": "mechanical"
+        },
+        {
+          "description": "A file whose header says it is generated.",
+          "type": "string",
+          "const": "generated"
+        }
+      ]
+    },
     "RenameEntry": {
       "description": "One rename as the labelled pair the artifact renders.",
       "type": "object",

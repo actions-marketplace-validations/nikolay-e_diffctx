@@ -98,20 +98,22 @@ def test_hand_written_manifests_survive_the_bot_bumps(gitops_repo, budget):
     assert not missing, f"hand-written manifests dropped in favour of bot bumps: {missing}; emitted {sorted(files)}"
 
 
-@XFAIL_263
 def test_an_unavoidable_omission_is_disclosed_on_every_structured_surface(gitops_repo):
     result = diffctx.build_diff_context(root_dir=gitops_repo.path, diff_range="HEAD~2", budget_tokens=300)
     represented = {f["path"] for f in result.get("fragments") or []}
     omitted = sorted(set(result["changed_files"]) - represented)
     assert omitted, "a 300-token budget over 13 changed files must omit something"
-    assert sorted(result.get("omitted_changed_files") or []) == omitted
-    assert json.loads(diffctx.to_json(result))["omitted_changed_files"] == omitted
-    assert "omitted_changed_files" in diffctx.to_yaml(result)
+    inventory = {c["path"]: c for c in result["changes"]}
+    assert sorted(inventory) == sorted(result["changed_files"]), "every changed file has an inventory row"
+    assert sorted(p for p, c in inventory.items() if not c["represented"]) == omitted
+    assert {inventory[p]["class"] for p in BUMP_FILES} == {"mechanical"}
+    assert inventory["infra/alerts.yaml"]["class"] == "content"
+    assert json.loads(diffctx.to_json(result))["changes"] == result["changes"]
+    assert "represented: false" in diffctx.to_yaml(result)
     for rendered in (diffctx.to_markdown(result), diffctx.to_text(result)):
         assert "omitted" in rendered
 
 
-@XFAIL_263
 def test_a_multi_commit_range_is_not_titled_by_the_last_commit(gitops_repo):
     result = diffctx.build_diff_context(root_dir=gitops_repo.path, diff_range="HEAD~2")
     subjects = result.get("commit_messages") or []

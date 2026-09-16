@@ -16,6 +16,12 @@ use crate::types::{Fragment, FragmentId, FragmentKind};
 #[derive(Default)]
 pub struct ChangeSummary {
     pub commit_message: Option<String>,
+    /// Every subject in a multi-commit range, newest first; empty for a
+    /// single commit or a working-tree diff.
+    pub commit_messages: Vec<String>,
+    /// `(display path, class, reason)` for every changed file, the class the
+    /// selection policy ranked evidence by.
+    pub changes: Vec<(String, crate::change_class::ChangeClass, &'static str)>,
     pub changed_files: Vec<String>,
     pub deleted_files: Vec<String>,
     pub renamed_files: Vec<(String, String)>,
@@ -53,6 +59,17 @@ pub struct RenameEntry {
     pub to: String,
 }
 
+/// One changed file's inventory row: what kind of change it carries and
+/// whether anything of it made it into the output. The row exists for every
+/// changed file whatever the budget — an omission is stated, never implied.
+#[derive(Serialize, JsonSchema, Clone)]
+pub struct ChangeEntry {
+    pub path: String,
+    pub class: crate::change_class::ChangeClass,
+    pub reason: &'static str,
+    pub represented: bool,
+}
+
 #[derive(Serialize, JsonSchema)]
 pub struct DiffContextOutput {
     /// `diffctx.context.v1`: the schema a consumer validates against; the
@@ -64,7 +81,11 @@ pub struct DiffContextOutput {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub commit_message: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commit_messages: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub changed_files: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub changes: Vec<ChangeEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub deleted_files: Vec<String>,
     #[serde(
@@ -326,19 +347,12 @@ fn extract_symbol(frag: &Fragment) -> Option<String> {
     None
 }
 
-use crate::paths::to_posix_display as normalize_path_separators;
-
+/// The one spelling of a fragment's path in output — the same function the
+/// changed-file list uses, so "is this changed file represented?" compares
+/// like with like. A private variant here stripped an un-canonicalised root
+/// and could disagree with the list on a symlinked checkout (#263).
 pub(crate) fn get_relative_path(frag: &Fragment, repo_root: &Path) -> String {
-    let frag_path = Path::new(frag.path());
-    if !frag_path.is_absolute() {
-        return normalize_path_separators(frag_path.to_string_lossy());
-    }
-    normalize_path_separators(
-        frag_path
-            .strip_prefix(repo_root)
-            .unwrap_or(frag_path)
-            .to_string_lossy(),
-    )
+    crate::paths::display_rel_or_abs(repo_root, Path::new(frag.path()))
 }
 
 fn create_fragment_entry(frag: &Fragment, path_str: &str) -> FragmentEntry {
@@ -369,7 +383,9 @@ impl DiffContextOutput {
             name: name.to_string(),
             output_type: "diff_context".to_string(),
             commit_message: None,
+            commit_messages: Vec::new(),
             changed_files: Vec::new(),
+            changes: Vec::new(),
             deleted_files: Vec::new(),
             renamed_files: Vec::new(),
             lockfile_changes: Vec::new(),
@@ -523,12 +539,25 @@ pub fn build_diff_context_output(
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| resolved.to_string_lossy().to_string());
 
+    let changes: Vec<ChangeEntry> = change
+        .changes
+        .into_iter()
+        .map(|(path, class, reason)| ChangeEntry {
+            represented: by_path.contains_key(&path),
+            path,
+            class,
+            reason,
+        })
+        .collect();
+
     DiffContextOutput {
         schema: CONTEXT_SCHEMA,
         name,
         output_type: "diff_context".to_string(),
         commit_message: change.commit_message,
+        commit_messages: change.commit_messages,
         changed_files: change.changed_files,
+        changes,
         deleted_files: change.deleted_files,
         renamed_files: change.renamed_files,
         lockfile_changes: change.lockfile_changes,
@@ -552,7 +581,9 @@ mod tests {
             name: "repo".to_string(),
             output_type: "diff_context".to_string(),
             commit_message: None,
+            commit_messages: Vec::new(),
             changed_files: Vec::new(),
+            changes: Vec::new(),
             deleted_files: Vec::new(),
             renamed_files,
             lockfile_changes: Vec::new(),

@@ -11,6 +11,7 @@ mod paths;
 
 // Change set: what the diff touched, cut into fragments.
 pub(crate) mod candidate_files;
+pub mod change_class;
 pub(crate) mod excerpt;
 pub(crate) mod fragmentation;
 pub(crate) mod languages;
